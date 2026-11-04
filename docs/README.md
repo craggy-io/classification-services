@@ -30,3 +30,7 @@ relates to the other layers. Domain operations take a context first.
 The two wordmarks in `assets/` are unchanged copies of the Craggy brand kit
 variants also used by artifact-services. The diagrams follow the same palette
 (amber `#FFB547` on `#111A20`) and JetBrains Mono.
+
+The diagrams are generated: edit and run `python3 docs/assets/diagrams.py`,
+which rewrites both SVGs and fails if any text overflows its box
+(`check_svg.py`, assuming 0.6 em monospace glyphs).
