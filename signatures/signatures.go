@@ -55,6 +55,10 @@ func (s ByteSet) Contains(v byte) bool { return s[v/64]&(1<<(v%64)) != 0 }
 // IsAny reports whether every byte is allowed.
 func (s ByteSet) IsAny() bool { return s == Any() }
 
+// IsEmpty reports whether no byte is allowed (a position that can never
+// match).
+func (s ByteSet) IsEmpty() bool { return s == ByteSet{} }
+
 // Single returns the only allowed byte, if exactly one is.
 func (s ByteSet) Single() (byte, bool) {
 	found := -1
@@ -156,8 +160,11 @@ func (p Pattern) firstConcrete() (int64, int) {
 }
 
 func (p Pattern) matches(prefix []byte, size int64) bool {
+	if p.Offset < 0 || len(p.Sets) == 0 {
+		return false
+	}
 	end := p.End()
-	if end > size || end > int64(len(prefix)) {
+	if end < p.Offset || end > size || end > int64(len(prefix)) {
 		return false
 	}
 	for i, s := range p.Sets {
@@ -219,7 +226,18 @@ type Matcher struct {
 	maxEnd  int64
 }
 
-// New compiles rules. Rules without patterns are rejected.
+func cloneRule(r Rule) Rule {
+	pats := make([]Pattern, len(r.Patterns))
+	for i, p := range r.Patterns {
+		pats[i] = Pattern{Offset: p.Offset, Sets: append([]ByteSet(nil), p.Sets...)}
+	}
+	r.Patterns = pats
+	return r
+}
+
+// New compiles rules. Rules without patterns, with empty or
+// negatively-offset patterns, or with an empty byte set are rejected. The
+// matcher deep-copies its rules: later caller mutation cannot change it.
 func New(rules []Rule) (*Matcher, error) {
 	m := &Matcher{buckets: map[[2]int64][]int{}}
 	for _, r := range rules {
@@ -229,6 +247,23 @@ func New(rules []Rule) (*Matcher, error) {
 		if r.Type == "" {
 			return nil, fmt.Errorf("signatures: rule %q has no type", r.ID)
 		}
+		for _, p := range r.Patterns {
+			if p.Offset < 0 {
+				return nil, fmt.Errorf("signatures: rule %q has negative pattern offset %d", r.ID, p.Offset)
+			}
+			if len(p.Sets) == 0 {
+				return nil, fmt.Errorf("signatures: rule %q has an empty pattern at offset %d", r.ID, p.Offset)
+			}
+			if p.End() < p.Offset {
+				return nil, fmt.Errorf("signatures: rule %q pattern at offset %d overflows", r.ID, p.Offset)
+			}
+			for _, s := range p.Sets {
+				if s.IsEmpty() {
+					return nil, fmt.Errorf("signatures: rule %q has an empty byte set (can never match)", r.ID)
+				}
+			}
+		}
+		r = cloneRule(r)
 		r.Level = r.level()
 		m.rules = append(m.rules, r)
 		m.maxEnd = max(m.maxEnd, r.End())
@@ -251,8 +286,14 @@ func New(rules []Rule) (*Matcher, error) {
 // MaxEnd is the prefix length needed to evaluate every rule.
 func (m *Matcher) MaxEnd() int64 { return m.maxEnd }
 
-// Rules returns the compiled rules.
-func (m *Matcher) Rules() []Rule { return m.rules }
+// Rules returns a deep copy of the compiled rules.
+func (m *Matcher) Rules() []Rule {
+	out := make([]Rule, len(m.rules))
+	for i, r := range m.rules {
+		out[i] = cloneRule(r)
+	}
+	return out
+}
 
 // Match evaluates every rule against prefix (the first bytes of content of
 // total length size). Hits are ordered by rule position.
@@ -260,7 +301,7 @@ func (m *Matcher) Match(prefix []byte, size int64) []Hit {
 	var idx []int
 	for _, key := range m.keys {
 		off, fb := key[0], key[1]
-		if fb >= 0 && (off >= int64(len(prefix)) || int64(prefix[off]) != fb) {
+		if fb >= 0 && (off < 0 || off >= int64(len(prefix)) || int64(prefix[off]) != fb) {
 			continue
 		}
 		idx = append(idx, m.buckets[key]...)

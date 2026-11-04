@@ -22,6 +22,10 @@ type CFB struct {
 	Kind string
 	// Macros is set when a VBA project storage or stream is present.
 	Macros bool
+	// Incomplete is set when the directory chain could not be followed to
+	// its end (FAT coverage or the sector cap ran out), so Entries, Kind
+	// and Macros may be missing later storages.
+	Incomplete bool
 }
 
 var cfbMagic = []byte{0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1}
@@ -35,7 +39,7 @@ const (
 func (c *CFB) Describe() map[string]any {
 	return map[string]any{
 		"major_version": int64(c.MajorVersion), "sector_size": c.SectorSize,
-		"entries": strs(c.Entries), "kind": c.Kind, "macros": c.Macros, "root_clsid": c.RootCLSID,
+		"entries": strs(c.Entries), "kind": c.Kind, "macros": c.Macros, "root_clsid": c.RootCLSID, "incomplete": c.Incomplete,
 	}
 }
 
@@ -61,15 +65,21 @@ func ParseCFB(ra io.ReaderAt, size int64) (*CFB, error) {
 	c.SectorSize = 1 << shift
 	sectorOff := func(s uint32) int64 { return (int64(s) + 1) * c.SectorSize }
 
+	entriesPerSector := int(c.SectorSize / 4)
 	var fat []uint32
 	for i := 0; i < 109; i++ {
 		s := le.Uint32(h[76+4*i:])
 		if s >= 0xfffffffa {
+			// Unused DIFAT slot: pad so a hole cannot shift the FAT
+			// indices of later sectors.
+			for j := 0; j < entriesPerSector; j++ {
+				fat = append(fat, cfbEndOfChain)
+			}
 			continue
 		}
 		b, err := readExact(ra, size, sectorOff(s), c.SectorSize)
 		if err != nil {
-			break
+			return nil, fmt.Errorf("views: compound file FAT sector %d: %w", s, err)
 		}
 		for j := 0; j+4 <= len(b); j += 4 {
 			fat = append(fat, le.Uint32(b[j:]))
@@ -94,7 +104,9 @@ func ParseCFB(ra io.ReaderAt, size int64) (*CFB, error) {
 			}
 			name := string(utf16.Decode(u))
 			if ent[66] == 5 && c.RootCLSID == "" {
-				c.RootCLSID = fmt.Sprintf("%x", ent[80:96])
+				g := ent[80:96]
+				c.RootCLSID = fmt.Sprintf("%08x-%04x-%04x-%02x%02x-%x",
+					le.Uint32(g), le.Uint16(g[4:]), le.Uint16(g[6:]), g[8], g[9], g[10:16])
 			}
 			if len(c.Entries) < 512 {
 				c.Entries = append(c.Entries, name)
@@ -102,9 +114,13 @@ func ParseCFB(ra io.ReaderAt, size int64) (*CFB, error) {
 			names[name] = true
 		}
 		if int64(dir) >= int64(len(fat)) {
+			c.Incomplete = true
 			break
 		}
 		dir = fat[dir]
+		if n == maxCFBDirSectors-1 && dir < cfbEndOfChain {
+			c.Incomplete = true
+		}
 	}
 	switch {
 	case names["WordDocument"]:

@@ -8,8 +8,10 @@ import (
 	"archive/zip"
 	"bytes"
 	"compress/gzip"
+	"compress/zlib"
 	"encoding/binary"
 	"hash/crc32"
+	"strconv"
 	"time"
 	"unicode/utf16"
 )
@@ -48,6 +50,15 @@ func Gzip(data []byte, name string) []byte {
 	w := gzip.NewWriter(&b)
 	w.Name = name
 	w.ModTime = time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	w.Write(data)
+	w.Close()
+	return b.Bytes()
+}
+
+// Zlib compresses data.
+func Zlib(data []byte) []byte {
+	var b bytes.Buffer
+	w := zlib.NewWriter(&b)
 	w.Write(data)
 	w.Close()
 	return b.Bytes()
@@ -110,6 +121,7 @@ func PE(dll, dotnet bool) []byte {
 	le.PutUint32(opt[16:], 0x1000)
 	le.PutUint32(opt[60:], 0x200) // SizeOfHeaders
 	le.PutUint16(opt[68:], 3)     // console
+	le.PutUint32(opt[108:], 16)   // NumberOfRvaAndSizes
 	if dotnet {
 		le.PutUint32(opt[112+14*8:], 0x2000)
 		le.PutUint32(opt[112+14*8+4:], 72)
@@ -288,6 +300,9 @@ func CFB(names ...string) []byte {
 	entry := func(i int, name string, typ byte) {
 		e := b[2*sector+128*i:]
 		u := utf16.Encode([]rune(name))
+		if len(u) > 31 {
+			panic("testkit: CFB entry name exceeds 31 UTF-16 units: " + name)
+		}
 		for j, c := range u {
 			le.PutUint16(e[2*j:], c)
 		}
@@ -316,6 +331,68 @@ func Pcap(n int) []byte {
 		b.Write(make([]byte, 14))
 	}
 	return b.Bytes()
+}
+
+// MachO builds a minimal thin Mach-O 64-bit executable header (arm64).
+func MachO() []byte {
+	b := make([]byte, 32)
+	le := binary.LittleEndian
+	le.PutUint32(b[0:], 0xfeedfacf)
+	le.PutUint32(b[4:], 0x0100000c) // arm64
+	le.PutUint32(b[12:], 2)         // MH_EXECUTE
+	return b
+}
+
+// Ar builds a Unix ar archive with the given members.
+func Ar(files ...File) []byte {
+	var b bytes.Buffer
+	b.WriteString("!<arch>\n")
+	for _, f := range files {
+		name := f.Name
+		if len(name) > 15 {
+			panic("testkit: ar member name too long: " + name)
+		}
+		hdr := make([]byte, 60)
+		for i := range hdr {
+			hdr[i] = ' '
+		}
+		copy(hdr, name+"/")
+		copy(hdr[48:], []byte(strconv.Itoa(len(f.Data))))
+		hdr[58], hdr[59] = '`', '\n'
+		b.Write(hdr)
+		b.Write(f.Data)
+		if len(f.Data)%2 == 1 {
+			b.WriteByte('\n')
+		}
+	}
+	return b.Bytes()
+}
+
+// PNG builds a minimal 1x1 PNG (signature and IHDR).
+func PNG() []byte {
+	var b bytes.Buffer
+	b.Write([]byte{0x89, 'P', 'N', 'G', 0x0d, 0x0a, 0x1a, 0x0a})
+	ihdr := make([]byte, 13)
+	binary.BigEndian.PutUint32(ihdr[0:], 1)
+	binary.BigEndian.PutUint32(ihdr[4:], 1)
+	ihdr[8] = 8 // bit depth
+	chunk := append([]byte("IHDR"), ihdr...)
+	var lenBuf, crcBuf [4]byte
+	binary.BigEndian.PutUint32(lenBuf[:], 13)
+	binary.BigEndian.PutUint32(crcBuf[:], crc32.ChecksumIEEE(chunk))
+	b.Write(lenBuf[:])
+	b.Write(chunk)
+	b.Write(crcBuf[:])
+	return b.Bytes()
+}
+
+// SQLite builds a minimal SQLite 3 database header (512-byte page).
+func SQLite() []byte {
+	b := make([]byte, 512)
+	copy(b, "SQLite format 3\x00")
+	binary.BigEndian.PutUint16(b[16:], 512)
+	binary.BigEndian.PutUint32(b[56:], 1) // UTF-8
+	return b
 }
 
 // XZHeader is a valid xz stream header (CRC64 check) followed by padding.

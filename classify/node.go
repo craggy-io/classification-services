@@ -3,6 +3,9 @@ package classify
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -168,10 +171,16 @@ func (j *job) classifyNode(c *content) (*Result, []derivedChild) {
 func (j *job) runClassifier(c *content, r *paged.Reader, facets map[string]Match, ce *entry, parent *span) outcome {
 	e := j.e
 	file := classifierFileName(ce)
-	o, shared := e.flight.Do(c.digest+"|"+file, func() outcome {
-		if b, ok := e.store.Read(c.digest, file); ok {
-			if o, err := decodeOutcome(b, ce); err == nil {
-				return o
+	// Classifiers can read the name hint and the facet set, so both are
+	// part of the sharing key; named runs also bypass the disk cache,
+	// whose file name cannot carry them.
+	flightKey := c.digest + "|" + file + "|" + c.name + "|" + facetKey(facets)
+	runOnce := func() outcome {
+		if c.name == "" {
+			if b, ok := e.store.Read(c.digest, file); ok {
+				if o, err := decodeOutcome(b, ce); err == nil {
+					return o
+				}
 			}
 		}
 		sp := startSpan(j.obs, parent, "classifier", ce.spec.ID)
@@ -193,6 +202,8 @@ func (j *job) runClassifier(c *content, r *paged.Reader, facets map[string]Match
 					a.Level = lvl
 				}
 				o.raws = append(o.raws, raw{a: a, ev: Evidence{By: ce.spec.ID, Kind: "classifier", Level: lvl}})
+			} else if strings.TrimSpace(a.Type) != "" && o.limitation == "" {
+				o.limitation = fmt.Sprintf("classifier %q asserted %q, which is not in its Produces", ce.spec.ID, strings.TrimSpace(a.Type))
 			}
 		}
 		for _, an := range out.Anomalies {
@@ -215,7 +226,8 @@ func (j *job) runClassifier(c *content, r *paged.Reader, facets map[string]Match
 				o.children = append(o.children, dc)
 			}
 		}
-		if o.limitation == "" && !r.Exhausted() {
+		o.exhausted = r.Exhausted()
+		if o.limitation == "" && !o.exhausted && c.name == "" {
 			if b, err := encodeOutcome(o); err == nil {
 				_ = e.store.Write(c.digest, file, b)
 			}
@@ -223,7 +235,13 @@ func (j *job) runClassifier(c *content, r *paged.Reader, facets map[string]Match
 		sp.count("children", int64(len(o.children)))
 		sp.end(nil)
 		return o
-	})
+	}
+	o, shared := e.flight.Do(flightKey, runOnce)
+	if shared && (o.limitation != "" || o.exhausted) {
+		// The leader ran under its own context and read budget; its
+		// failure is not this job's outcome.
+		o, shared = runOnce(), false
+	}
 	if shared {
 		// The leader's children belong to its own job. Downgrade them to
 		// descriptors; expansion re-derives bytes from this job's parent.
@@ -234,6 +252,23 @@ func (j *job) runClassifier(c *content, r *paged.Reader, facets map[string]Match
 		o.cached = true
 	}
 	return o
+}
+
+// facetKey identifies the facet set a classifier was scheduled with, for
+// flight sharing: classifiers may branch on ctx.has/ctx.facet of any type.
+func facetKey(facets map[string]Match) string {
+	types := make([]string, 0, len(facets))
+	for t := range facets {
+		types = append(types, t)
+	}
+	sort.Strings(types)
+	h := sha256.New()
+	for _, t := range types {
+		m := facets[t]
+		md, _ := json.Marshal(m.Metadata)
+		fmt.Fprintf(h, "%s|%s|%s\n", t, m.Level, md)
+	}
+	return hex.EncodeToString(h.Sum(nil))[:16]
 }
 
 func safeRun(ctx context.Context, ce *entry, in *Input, lim Limits) (out Output, err error) {
@@ -274,8 +309,11 @@ func (j *job) materialiseDerived(d Derived, by string, parent *content) (derived
 	var c *content
 	switch {
 	case d.Length > 0:
-		if d.Offset < 0 || d.Offset+d.Length > parent.size {
+		if d.Offset < 0 || d.Offset > parent.size || d.Length > parent.size-d.Offset {
 			return dc, fmt.Errorf("range (%d, %d) outside a %d-byte parent", d.Offset, d.Length, parent.size)
+		}
+		if d.Length > j.limits.MaxDerivedBytes {
+			return dc, fmt.Errorf("%d bytes exceeds MaxDerivedBytes", d.Length)
 		}
 		ra := io.NewSectionReader(parent.ra, d.Offset, d.Length)
 		digest, err := hashReaderAt(ra, d.Length)
@@ -286,6 +324,9 @@ func (j *job) materialiseDerived(d Derived, by string, parent *content) (derived
 	case d.Reader != nil:
 		if d.Size < 0 {
 			return dc, fmt.Errorf("negative size")
+		}
+		if d.Size > j.limits.MaxDerivedBytes {
+			return dc, fmt.Errorf("%d bytes exceeds MaxDerivedBytes", d.Size)
 		}
 		digest, err := hashReaderAt(d.Reader, d.Size)
 		if err != nil {

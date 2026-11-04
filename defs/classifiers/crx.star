@@ -29,3 +29,15 @@ test(
     expect = ["archive.crx"],
     anomalies = ["zip.prepended-data"],
 )
+
+test(
+    "unknown crx version is rejected",
+    hex = "437232340900000000000000504b0304",
+    absent = ["archive.crx"],
+)
+
+test(
+    "no zip at the computed start is rejected",
+    hex = "4372323403000000000000005858585858585858",
+    absent = ["archive.crx"],
+)

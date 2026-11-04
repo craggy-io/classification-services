@@ -82,7 +82,7 @@ func ParseMachO(ra io.ReaderAt, size int64) (*MachO, error) {
 			} else {
 				a.Offset, a.Size = int64(be.Uint32(e[8:])), int64(be.Uint32(e[12:]))
 			}
-			if a.Offset <= 0 || a.Size <= 0 || a.Offset+a.Size > size {
+			if a.Offset <= 0 || a.Size <= 0 || a.Size > size-a.Offset {
 				return nil, fmt.Errorf("views: universal Mach-O slice %d outside the file", i)
 			}
 			a.CPUName = machoCPUs[a.CPUType]

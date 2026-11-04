@@ -20,6 +20,9 @@ func Text(_ context.Context, in Input) ([]Finding, error) {
 	if err != nil {
 		return nil, err
 	}
+	if len(b) == 0 {
+		return nil, nil // no sample read (e.g. MaxBytes == 0): nothing verified
+	}
 	whole := int64(len(b)) >= in.Size()
 	if !isText(b, whole) {
 		return nil, nil
@@ -116,7 +119,9 @@ func Charset(_ context.Context, in Input) ([]Finding, error) {
 		level = Recognised
 	}
 	f := Match(typ, level, map[string]any{"bom": skip > 0})
-	f.Children = []Derived{{Name: "utf-8", Data: []byte(text)}}
+	if data := []byte(text); int64(len(data)) <= in.Limits().MaxDerivedBytes {
+		f.Children = []Derived{{Name: "utf-8", Data: data}}
+	}
 	return []Finding{f}, nil
 }
 

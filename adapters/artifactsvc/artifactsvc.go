@@ -84,8 +84,9 @@ func (c *Classifier) ClassifyArtifact(ctx context.Context, id artifacts.ID, opts
 		return nil, errors.New("artifactsvc: Engine and Artifacts are required")
 	}
 	opts = append([]classify.ClassifyOption{classify.WithDepth(c.Depth)}, opts...)
-	rep := &Report{Version: ReportVersion, Artifact: id, Engine: c.Engine.Revision(), Depth: c.Depth}
+	rep := &Report{Version: ReportVersion, Artifact: id, Engine: c.Engine.Revision(), Depth: classify.EffectiveDepth(c.Depth, opts[1:]...)}
 	cursor := ""
+	seenCursors := map[string]bool{}
 	for {
 		page, err := c.Artifacts.ListFiles(ctx, id, artifacts.FileQuery{Limit: 1000, Cursor: cursor})
 		if err != nil {
@@ -104,6 +105,10 @@ func (c *Classifier) ClassifyArtifact(ctx context.Context, id artifacts.ID, opts
 		if page.NextCursor == "" {
 			return rep, nil
 		}
+		if seenCursors[page.NextCursor] {
+			return nil, fmt.Errorf("artifactsvc: listing %s: cursor %q does not advance", id, page.NextCursor)
+		}
+		seenCursors[page.NextCursor] = true
 		cursor = page.NextCursor
 	}
 }
@@ -121,31 +126,69 @@ func (c *Classifier) classifyFile(ctx context.Context, id artifacts.ID, e artifa
 		return nil, err
 	}
 	defer rc.Close()
-	var src classify.Source
-	if e.Size <= inlineLimit {
-		data, err := io.ReadAll(io.LimitReader(rc, limit+1))
-		if err != nil {
-			return nil, err
-		}
-		src = classify.Bytes(data)
-	} else {
-		f, err := os.CreateTemp(c.TempDir, "artifactsvc-*")
-		if err != nil {
-			return nil, err
-		}
-		defer os.Remove(f.Name())
-		defer f.Close()
-		n, err := io.Copy(f, io.LimitReader(rc, limit+1))
-		if err != nil {
-			return nil, err
-		}
-		src = classify.ReaderAt(f, n)
+	// Stage by actual bytes read, not the manifest's claim: buffer up to
+	// inlineLimit, spill to a temp file past it, and read to EOF so the
+	// CAS reader's integrity check and the size checks below are real.
+	st := &staging{tempDir: c.TempDir}
+	n, err := io.Copy(st, io.LimitReader(rc, limit+1))
+	if err != nil {
+		st.cleanup()
+		return nil, err
 	}
+	defer st.cleanup()
 	// Integrity is established at EOF by the CAS reader: close before use.
 	if err := rc.Close(); err != nil {
 		return nil, fmt.Errorf("verifying %s: %w", e.Path, err)
 	}
+	if n > limit {
+		return nil, fmt.Errorf("file of more than %d bytes exceeds MaxFileBytes", limit)
+	}
+	if n != e.Size {
+		return nil, fmt.Errorf("manifest size %d does not match %d bytes read", e.Size, n)
+	}
+	var src classify.Source
+	if st.file != nil {
+		src = classify.ReaderAt(st.file, n)
+	} else {
+		src = classify.Bytes(st.buf.Bytes())
+	}
 	return c.Engine.Classify(ctx, src.Named(e.Path), opts...)
+}
+
+// staging buffers a stream in memory up to inlineLimit, then spills to a
+// temp file.
+type staging struct {
+	tempDir string
+	buf     bytes.Buffer
+	file    *os.File
+}
+
+func (s *staging) Write(p []byte) (int, error) {
+	if s.file == nil && int64(s.buf.Len())+int64(len(p)) > inlineLimit {
+		f, err := os.CreateTemp(s.tempDir, "artifactsvc-*")
+		if err != nil {
+			return 0, err
+		}
+		if _, err := f.Write(s.buf.Bytes()); err != nil {
+			f.Close()
+			os.Remove(f.Name())
+			return 0, err
+		}
+		s.buf.Reset()
+		s.file = f
+	}
+	if s.file != nil {
+		return s.file.Write(p)
+	}
+	return s.buf.Write(p)
+}
+
+func (s *staging) cleanup() {
+	if s.file != nil {
+		s.file.Close()
+		os.Remove(s.file.Name())
+		s.file = nil
+	}
 }
 
 // Published lists what Publish stored.
@@ -165,6 +208,9 @@ type Published struct {
 // returned Published lists what was already stored.
 func (c *Classifier) Publish(ctx context.Context, rep *Report) (Published, error) {
 	var out Published
+	if rep == nil {
+		return out, errors.New("artifactsvc: nil report")
+	}
 	if c.CAS == nil || c.Artifacts == nil {
 		return out, errors.New("artifactsvc: CAS and Artifacts are required to publish")
 	}
@@ -301,14 +347,15 @@ func anomalyRows(rep *Report) []objects.Row {
 			continue
 		}
 		n := 0
-		_ = f.Result.Walk(func(path []string, r *classify.Result) error {
-			node := ""
-			for i, p := range path {
-				if i > 0 {
-					node += "/"
-				}
-				node += p
+		// Per-path traversal (not Result.Walk, which dedups shared nodes):
+		// an anomaly on a digest-shared child is one row per path to it.
+		var visit func(r *classify.Result, node string, ancestors map[*classify.Result]bool)
+		visit = func(r *classify.Result, node string, ancestors map[*classify.Result]bool) {
+			if r == nil || ancestors[r] {
+				return
 			}
+			ancestors[r] = true
+			defer delete(ancestors, r)
 			for _, a := range r.Anomalies {
 				rows = append(rows, objects.Row{ID: fmt.Sprintf("f%d-a%d", fi, n), Values: map[string]any{
 					"path": f.Path, "node": node, "code": a.Code, "severity": a.Severity.String(),
@@ -316,8 +363,15 @@ func anomalyRows(rep *Report) []objects.Row {
 				}})
 				n++
 			}
-			return nil
-		})
+			for _, ch := range r.Children {
+				child := ch.Name
+				if node != "" {
+					child = node + "/" + ch.Name
+				}
+				visit(ch.Result, child, ancestors)
+			}
+		}
+		visit(f.Result, "", map[*classify.Result]bool{})
 	}
 	return rows
 }

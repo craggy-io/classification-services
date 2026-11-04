@@ -163,7 +163,8 @@ ends (`Final`). `ParentID` nests `classifier` runs inside `node`s inside a
 `bytes_read`, `signature_hits`, `classifiers_run`, `classifiers_cached`,
 `children`, `anomalies`, `cache_hit`, `nodes`. Definition operations (`define`,
 `remove`, `check`, `preview`, `refresh`, `maintain`, `open`) are reported too.
-Pass one per call with `Observe(o)`.
+Pass one per call with `Observe(o)`. Observer calls are serialised by the
+engine, so an `Observer` need not be safe for concurrent use.
 
 ## Concurrency
 

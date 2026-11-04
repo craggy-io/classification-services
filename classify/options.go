@@ -110,6 +110,19 @@ type classifyConfig struct {
 // ClassifyOption configures one Classify call.
 type ClassifyOption func(*classifyConfig)
 
+// EffectiveDepth returns the depth Classify would use with base as the
+// starting depth and opts applied in order (for callers that report or
+// key on the depth a classification actually ran at).
+func EffectiveDepth(base Depth, opts ...ClassifyOption) Depth {
+	cc := classifyConfig{depth: base}
+	for _, o := range opts {
+		if o != nil {
+			o(&cc)
+		}
+	}
+	return cc.depth
+}
+
 // WithDepth sets how far classification goes (Standard by default).
 func WithDepth(d Depth) ClassifyOption {
 	return func(c *classifyConfig) {

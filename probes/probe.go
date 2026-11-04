@@ -117,7 +117,7 @@ func expansionLimit(in Input, n int64) int64 {
 
 // Revision identifies the built-in probe implementations. Bump it when a
 // probe's behaviour changes so cached results are recomputed.
-const Revision = "probes-v1"
+const Revision = "probes-v2"
 
 // Builtins returns every built-in probe.
 func Builtins() []Probe {

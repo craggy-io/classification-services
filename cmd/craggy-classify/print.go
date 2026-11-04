@@ -139,9 +139,12 @@ func (p *printer) check(rep *classify.CheckReport) {
 		verb = "replaces an installed module and adds"
 	}
 	fmt.Fprintf(p.w, "%s: %s %d types, %d classifiers, %d signatures\n", rep.Module, verb, len(rep.AddedTypes), len(rep.Classifiers), rep.Signatures)
-	for label, ts := range map[string][]string{"changed": rep.ChangedTypes, "removed": rep.RemovedTypes} {
-		if len(ts) > 0 {
-			fmt.Fprintf(p.w, "  %s types: %s\n", label, strings.Join(ts, ", "))
+	for _, lt := range []struct {
+		label string
+		ts    []string
+	}{{"changed", rep.ChangedTypes}, {"removed", rep.RemovedTypes}} {
+		if len(lt.ts) > 0 {
+			fmt.Fprintf(p.w, "  %s types: %s\n", lt.label, strings.Join(lt.ts, ", "))
 		}
 	}
 	for _, t := range rep.Tests {

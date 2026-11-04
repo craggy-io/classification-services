@@ -46,6 +46,9 @@ func (c CyberChefCond) set() (ByteSet, error) {
 		v, err := byteVal(c.Value)
 		return Only(v), err
 	case "one_of":
+		if len(c.Values) == 0 {
+			return ByteSet{}, fmt.Errorf("one_of with no values")
+		}
 		var s ByteSet
 		for _, x := range c.Values {
 			v, err := byteVal(x)
@@ -104,6 +107,9 @@ func alternative(conds []CyberChefCond) (Pattern, error) {
 			return Pattern{}, err
 		}
 		sets[c.Offset-lo] = sets[c.Offset-lo].Intersect(s)
+		if sets[c.Offset-lo].IsEmpty() {
+			return Pattern{}, fmt.Errorf("contradictory conditions at offset %d match no byte", c.Offset)
+		}
 	}
 	return Pattern{Offset: lo, Sets: sets}, nil
 }

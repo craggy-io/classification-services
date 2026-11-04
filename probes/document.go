@@ -190,6 +190,12 @@ func CFB(_ context.Context, in Input) ([]Finding, error) {
 		return []Finding{Reject("document.ole2", Validated)}, nil
 	}
 	f := Match("document.ole2", Validated, c.Describe())
+	if c.Incomplete {
+		f.Anomalies = append(f.Anomalies, evidence.Anomaly{
+			Code: "cfb.directory-truncated", Severity: evidence.Warning,
+			Message: "the compound file directory could not be read in full; storages may be missing",
+		})
+	}
 	if c.Macros {
 		f.Anomalies = append(f.Anomalies, evidence.Anomaly{
 			Code: "document.macros", Severity: evidence.Warning,

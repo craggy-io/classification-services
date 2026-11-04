@@ -47,7 +47,7 @@ digits, `_`, `.` and `-`. A leading docstring becomes `CheckReport.Doc`.
 | `signature(type, at(...), ..., level="candidate", id=)` | Add a rule; all patterns must match. Compiled into the shared matcher, so no Starlark runs at classify time. |
 | `at(offset, pattern)` | A pattern: hex string with optional spaces and `??` wildcards, or `b"..."` bytes. |
 | `classifier(id, run=, produces=, requires=["bytes"], derives=False)` | Add a classifier. It runs once `requires` hold and may only assert or reject `produces`. |
-| `test(name, data= / hex=, text=, filename=, expect=, absent=, primary=, anomalies=)` | An inline test run (at `Deep`) by `Check`, `Define`, `Preview` and `Engine.Test`. |
+| `test(name, data= / hex=, text=, filename=, expect=, absent=, primary=, anomalies=)` | An inline test run (at `Deep`) by `Check`, `Define`, `Preview` and `Engine.Test`. The name must be non-empty, at least one expectation is required, and expected types must exist in the catalogue. |
 
 Helpers: `base64.encode/decode`, `hex.encode/decode`, and Starlark's `json`
 module.
@@ -59,10 +59,10 @@ Every read is budgeted and every view memoised by the engine.
 | Member | Returns |
 | --- | --- |
 | `ctx.size`, `ctx.digest`, `ctx.name` | Size, SHA-256, name hint. |
-| `ctx.prefix(limit=size)`, `ctx.read(off, n)`, `ctx.text(limit=size)` | Bytes, bytes, string. |
+| `ctx.prefix(limit=16MiB)`, `ctx.read(off, n)`, `ctx.text(limit=16MiB)` | Bytes, bytes, string. An omitted limit reads at most 16 MiB; pass `limit` explicitly for more. |
 | `ctx.u8/u16le/u16be/u32le/u32be/u64le/u64be(off)` | Unsigned integers; reading past the end is an error. |
 | `ctx.find(needle, start=0, limit=size)` | Offset or `-1`. |
-| `ctx.json(limit=size)` | Decoded JSON value (errors if not exactly one value). |
+| `ctx.json(limit=16MiB)` | Decoded JSON value (errors if not exactly one value). |
 | `ctx.facet(type)` / `ctx.has(type)` | Metadata of an established type (or `None`) / whether it holds. |
 | `ctx.view.<name>()` | Any [registered view](recognisers.md#views) as a read-only struct. `ctx.view.zip()` also has `has`, `has_prefix`, `read(name, limit=)` and `entries()`. |
 | `ctx.match(type, level="recognised", **metadata)` | Assert a type; returns an assertion. |

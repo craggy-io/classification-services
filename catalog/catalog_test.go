@@ -44,12 +44,13 @@ func TestBuildAndQuery(t *testing.T) {
 
 func TestBuildErrors(t *testing.T) {
 	for want, extra := range map[string][]catalog.TypeInfo{
-		"unknown parent":    {{Name: "a.b", Parents: []string{"nope"}}},
-		"cycle":             {{Name: "a.x", Parents: []string{"a.y"}}, {Name: "a.y", Parents: []string{"a.x"}}},
-		"redeclared":        {{Name: "a.x", Parents: []string{"bytes"}}, {Name: "a.x", Parents: []string{"text"}}},
-		"does not descend":  {{Name: "a", Parents: []string{"bytes"}}, {Name: "a.x", Parents: []string{"text"}}},
-		"invalid type name": {{Name: "Upper.Case", Parents: []string{"bytes"}}},
-		"has no parents":    {{Name: "lonely"}},
+		"unknown parent":         {{Name: "a.b", Parents: []string{"nope"}}},
+		"cycle":                  {{Name: "a.x", Parents: []string{"a.y"}}, {Name: "a.y", Parents: []string{"a.x"}}},
+		"redeclared":             {{Name: "a.x", Parents: []string{"bytes"}}, {Name: "a.x", Parents: []string{"text"}}},
+		"does not descend":       {{Name: "a", Parents: []string{"bytes"}, Abstract: true}, {Name: "a.x", Parents: []string{"text"}}},
+		"invalid type name":      {{Name: "Upper.Case", Parents: []string{"bytes"}}},
+		"has no parents":         {{Name: "x.lonely"}},
+		"must be namespace.name": {{Name: "evil", Parents: []string{"bytes"}}},
 	} {
 		_, err := catalog.Build(append(roots(), extra...))
 		if err == nil || !strings.Contains(err.Error(), want) {

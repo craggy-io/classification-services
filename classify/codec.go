@@ -78,6 +78,7 @@ type outcome struct {
 	anomalies  []Anomaly
 	limitation string
 	cached     bool
+	exhausted  bool // the run hit its read budget; not shareable or cacheable
 }
 
 func encodeOutcome(o outcome) ([]byte, error) {
@@ -168,20 +169,24 @@ func decodeDAG(b []byte, digest string) (*Result, error) {
 		return nil, fmt.Errorf("classify: cache entry root mismatch")
 	}
 	built := map[string]*Result{}
+	inProgress := map[string]bool{}
 	var build func(d string, depth int) (*Result, error)
 	build = func(d string, depth int) (*Result, error) {
 		if r, ok := built[d]; ok {
 			return r, nil
 		}
+		if inProgress[d] {
+			return nil, fmt.Errorf("classify: corrupt cache entry (cycle at %s)", d)
+		}
 		n := dag.Nodes[d]
-		if n == nil || depth > 64 {
+		if n == nil || depth > 64 || n.Digest != d {
 			return nil, fmt.Errorf("classify: corrupt cache entry")
 		}
+		inProgress[d] = true
 		r := &Result{
 			Digest: n.Digest, Size: n.Size, Primary: n.Primary, Matches: n.Matches,
 			Rejected: n.Rejected, Anomalies: n.Anomalies, Complete: n.Complete, Limitations: n.Limitations,
 		}
-		built[d] = r
 		for _, c := range n.Children {
 			cr, err := build(c.Digest, depth+1)
 			if err != nil {
@@ -189,6 +194,8 @@ func decodeDAG(b []byte, digest string) (*Result, error) {
 			}
 			r.Children = append(r.Children, Child{Name: c.Name, By: c.By, Speculative: c.Speculative, Result: cr})
 		}
+		delete(inProgress, d)
+		built[d] = r
 		return r, nil
 	}
 	return build(digest, 0)

@@ -1,6 +1,7 @@
 package classify
 
 import (
+	"sync"
 	"sync/atomic"
 	"time"
 )
@@ -29,9 +30,20 @@ type Event struct {
 	Err      error
 }
 
-// Observer receives events synchronously. It must not block for long or
-// call back into the engine on the same goroutine.
+// Observer receives events synchronously. Calls are serialised by the
+// engine, so an Observer need not be safe for concurrent use. It must not
+// block for long or call back into the engine on the same goroutine.
 type Observer func(Event)
+
+// observerMu serialises every Observer invocation (classifier runs and
+// batch workers would otherwise call one concurrently).
+var observerMu sync.Mutex
+
+func emit(obs Observer, ev Event) {
+	observerMu.Lock()
+	defer observerMu.Unlock()
+	obs(ev)
+}
 
 var nextEventID atomic.Uint64
 
@@ -60,7 +72,7 @@ func startSpan(obs Observer, parent *span, op, key string) *span {
 	if parent != nil {
 		s.ev.ParentID = parent.ev.ID
 	}
-	s.obs(s.ev)
+	emit(s.obs, s.ev)
 	return s
 }
 
@@ -87,5 +99,5 @@ func (s *span) end(err error) {
 		}
 		ev.Counters = c
 	}
-	s.obs(ev)
+	emit(s.obs, ev)
 }
