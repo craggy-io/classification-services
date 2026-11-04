@@ -1,0 +1,82 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="720" viewBox="0 0 1440 720" role="img" aria-labelledby="title desc">
+<title id="title">Classification Services layer architecture</title>
+<desc id="desc">Classify (engine and results) uses Definitions (Starlark modules), the Catalog type DAG and Signatures, runs Probes over shared Views, and caches in the workdir through the paged reader and cache. The evidence vocabulary (levels and anomalies) spans every layer. An optional adapter module connects to artifact-services.</desc>
+<defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M1 1 L9 5 L1 9" fill="none" stroke="#FFB547" stroke-width="1.5"/></marker></defs>
+<rect width="1440" height="720" rx="20" fill="#111A20"/>
+<g font-family="'JetBrains Mono', Consolas, 'Liberation Mono', monospace">
+<text x="40" y="53" font-size="28" fill="#FFB547" font-weight="700" text-anchor="start">&gt; CLASSIFICATION SERVICES</text>
+<text x="40" y="87" font-size="22" fill="#E4ECE7" font-weight="400" text-anchor="start">Every type content can be shown to be</text>
+<text x="1400" y="53" font-size="18" fill="#E4ECE7" font-weight="400" text-anchor="end">LAYER ARCHITECTURE</text>
+<path d="M40 111 H1400" fill="none" stroke="#2A2F2C" stroke-width="2" />
+<text x="40" y="145" font-size="17" fill="#FFB547" font-weight="400" text-anchor="start">01 / ENGINE</text>
+<text x="440" y="145" font-size="17" fill="#FFB547" font-weight="400" text-anchor="start">02 / DEFINITIONS</text>
+<text x="800" y="145" font-size="17" fill="#FFB547" font-weight="400" text-anchor="start">03 / RECOGNISERS</text>
+<text x="1130" y="145" font-size="17" fill="#FFB547" font-weight="400" text-anchor="start">04 / WORKDIR</text>
+<rect x="40" y="167" width="340" height="200" rx="12" fill="#16222A" stroke="#4A3F2C" stroke-width="1.5"/>
+<path d="M62 189 H96" fill="none" stroke="#FFB547" stroke-width="3" />
+<text x="62" y="227" font-size="30" fill="#E4ECE7" font-weight="700" text-anchor="start">Classify</text>
+<text x="62" y="263" font-size="19" fill="#E4ECE7" font-weight="400" text-anchor="start">Engine / Result DAG</text>
+<text x="62" y="293" font-size="19" fill="#E4ECE7" font-weight="400" text-anchor="start">Explain / anomalies</text>
+<text x="62" y="323" font-size="19" fill="#E4ECE7" font-weight="400" text-anchor="start">Check / Preview / Define</text>
+<text x="62" y="353" font-size="19" fill="#E4ECE7" font-weight="400" text-anchor="start">Batch / directory walk</text>
+<rect x="40" y="387" width="340" height="120" rx="12" fill="#16222A" stroke="#4A3F2C" stroke-width="1.5"/>
+<path d="M62 409 H96" fill="none" stroke="#FFB547" stroke-width="3" />
+<text x="62" y="447" font-size="26" fill="#E4ECE7" font-weight="700" text-anchor="start">CLI</text>
+<text x="62" y="483" font-size="19" fill="#E4ECE7" font-weight="400" text-anchor="start">craggy-classify</text>
+<text x="62" y="513" font-size="19" fill="#E4ECE7" font-weight="400" text-anchor="start">JSON lines for agents</text>
+<rect x="440" y="167" width="300" height="112" rx="12" fill="#16222A" stroke="#4A3F2C" stroke-width="1.5"/>
+<path d="M462 189 H496" fill="none" stroke="#FFB547" stroke-width="3" />
+<text x="462" y="227" font-size="26" fill="#E4ECE7" font-weight="700" text-anchor="start">Definitions</text>
+<text x="462" y="263" font-size="19" fill="#E4ECE7" font-weight="400" text-anchor="start">Starlark modules + test()</text>
+<rect x="440" y="299" width="300" height="100" rx="12" fill="#16222A" stroke="#4A3F2C" stroke-width="1.5"/>
+<path d="M462 321 H496" fill="none" stroke="#FFB547" stroke-width="3" />
+<text x="462" y="359" font-size="26" fill="#E4ECE7" font-weight="700" text-anchor="start">Catalog</text>
+<text x="462" y="395" font-size="19" fill="#E4ECE7" font-weight="400" text-anchor="start">Type DAG / namespaces</text>
+<rect x="440" y="419" width="300" height="100" rx="12" fill="#16222A" stroke="#4A3F2C" stroke-width="1.5"/>
+<path d="M462 441 H496" fill="none" stroke="#FFB547" stroke-width="3" />
+<text x="462" y="479" font-size="26" fill="#E4ECE7" font-weight="700" text-anchor="start">Signatures</text>
+<text x="462" y="515" font-size="19" fill="#E4ECE7" font-weight="400" text-anchor="start">CyberChef + at() rules</text>
+<rect x="800" y="167" width="270" height="160" rx="12" fill="#16222A" stroke="#4A3F2C" stroke-width="1.5"/>
+<path d="M822 189 H856" fill="none" stroke="#FFB547" stroke-width="3" />
+<text x="822" y="227" font-size="26" fill="#E4ECE7" font-weight="700" text-anchor="start">Probes</text>
+<text x="822" y="263" font-size="19" fill="#E4ECE7" font-weight="400" text-anchor="start">39 native recognisers</text>
+<text x="822" y="293" font-size="19" fill="#E4ECE7" font-weight="400" text-anchor="start">Findings + anomalies</text>
+<rect x="800" y="347" width="270" height="172" rx="12" fill="#16222A" stroke="#4A3F2C" stroke-width="1.5"/>
+<path d="M822 369 H856" fill="none" stroke="#FFB547" stroke-width="3" />
+<text x="822" y="407" font-size="26" fill="#E4ECE7" font-weight="700" text-anchor="start">Views</text>
+<text x="822" y="443" font-size="19" fill="#E4ECE7" font-weight="400" text-anchor="start">ZIP ELF PE Mach-O</text>
+<text x="822" y="473" font-size="19" fill="#E4ECE7" font-weight="400" text-anchor="start">DEX AXML CFB pcap</text>
+<text x="822" y="503" font-size="19" fill="#E4ECE7" font-weight="400" text-anchor="start">Registered by name</text>
+<rect x="1130" y="167" width="270" height="160" rx="12" fill="#16222A" stroke="#4A3F2C" stroke-width="1.5"/>
+<path d="M1152 189 H1186" fill="none" stroke="#FFB547" stroke-width="3" />
+<text x="1152" y="227" font-size="26" fill="#E4ECE7" font-weight="700" text-anchor="start">Cache</text>
+<text x="1152" y="263" font-size="19" fill="#E4ECE7" font-weight="400" text-anchor="start">Classifier outputs</text>
+<text x="1152" y="293" font-size="19" fill="#E4ECE7" font-weight="400" text-anchor="start">Whole-result DAGs</text>
+<text x="1152" y="323" font-size="19" fill="#E4ECE7" font-weight="400" text-anchor="start">Stat index / GC</text>
+<rect x="1130" y="347" width="270" height="172" rx="12" fill="#16222A" stroke="#4A3F2C" stroke-width="1.5"/>
+<path d="M1152 369 H1186" fill="none" stroke="#FFB547" stroke-width="3" />
+<text x="1152" y="407" font-size="26" fill="#E4ECE7" font-weight="700" text-anchor="start">Paged input</text>
+<text x="1152" y="443" font-size="19" fill="#E4ECE7" font-weight="400" text-anchor="start">64 KiB page cache</text>
+<text x="1152" y="473" font-size="19" fill="#E4ECE7" font-weight="400" text-anchor="start">Read budget</text>
+<text x="1152" y="503" font-size="19" fill="#E4ECE7" font-weight="400" text-anchor="start">Memoised views</text>
+<path d="M380 223 H440" fill="none" stroke="#FFB547" stroke-width="2" marker-end="url(#arrow)"/>
+<text x="410" y="213" font-size="17" fill="#FFB547" font-weight="400" text-anchor="middle">loads</text>
+<path d="M380 289 H770 V247 H800" fill="none" stroke="#FFB547" stroke-width="2" marker-end="url(#arrow)"/>
+<text x="785" y="240" font-size="17" fill="#FFB547" font-weight="400" text-anchor="middle">runs</text>
+<path d="M1070 420 H1130" fill="none" stroke="#FFB547" stroke-width="2" marker-end="url(#arrow)"/>
+<text x="1100" y="410" font-size="17" fill="#FFB547" font-weight="400" text-anchor="middle">parses</text>
+<path d="M935 327 V347" fill="none" stroke="#FFB547" stroke-width="2" marker-end="url(#arrow)"/>
+<path d="M380 340 H405 V560 H1265 V519" fill="none" stroke="#FFB547" stroke-width="2" marker-end="url(#arrow)"/>
+<text x="830" y="552" font-size="17" fill="#FFB547" font-weight="400" text-anchor="middle">caches / reads</text>
+<path d="M210 575 V600" fill="none" stroke="#B9852F" stroke-width="1.5" stroke-dasharray="4 6"/>
+<path d="M590 575 V600" fill="none" stroke="#B9852F" stroke-width="1.5" stroke-dasharray="4 6"/>
+<path d="M935 575 V600" fill="none" stroke="#B9852F" stroke-width="1.5" stroke-dasharray="4 6"/>
+<path d="M1265 575 V600" fill="none" stroke="#B9852F" stroke-width="1.5" stroke-dasharray="4 6"/>
+<rect x="40" y="600" width="1360" height="84" rx="12" fill="#2A2F2C" stroke="#7A5C30"/>
+<text x="62" y="635" font-size="22" fill="#FFB547" font-weight="700" text-anchor="start">EVIDENCE VOCABULARY</text>
+<text x="62" y="666" font-size="18" fill="#E4ECE7" font-weight="400" text-anchor="start">Every layer</text>
+<text x="560" y="635" font-size="21" fill="#E4ECE7" font-weight="400" text-anchor="start">Candidate &lt; Recognised &lt; Validated</text>
+<text x="560" y="666" font-size="19" fill="#E4ECE7" font-weight="400" text-anchor="start">Anomalies: code / severity / reporter</text>
+<text x="40" y="708" font-size="16" fill="#E4ECE7" font-weight="400" text-anchor="start">Solid arrows: dependencies (one way, no cycles)</text>
+<text x="1400" y="708" font-size="16" fill="#E4ECE7" font-weight="400" text-anchor="end">adapters/artifactsvc: separate module bridging to artifact-services</text>
+</g></svg>

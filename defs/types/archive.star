@@ -1,0 +1,21 @@
+"""Archives and containers of files."""
+
+type("archive", parents = ["bytes"], abstract = True, description = "Archives and containers of files")
+
+type("archive.7z", parents = ["archive"], mime = "application/x-7z-compressed", ext = ["7z"], description = "7-Zip archive")
+type("archive.ace", parents = ["archive"], mime = "application/x-ace-compressed", ext = ["ace"], description = "WinACE archive")
+type("archive.alz", parents = ["archive"], mime = "application/octet-stream", ext = ["alz"], description = "ALZip archive")
+type("archive.ar", parents = ["archive"], mime = "application/x-archive", ext = ["a", "ar"], description = "Unix ar archive (static libraries)")
+type("archive.arj", parents = ["archive"], mime = "application/x-arj-compressed", ext = ["arj"], description = "ARJ archive")
+type("archive.cab", parents = ["archive"], mime = "application/vnd.ms-cab-compressed", ext = ["cab"], description = "Microsoft Cabinet")
+type("archive.cpio", parents = ["archive"], mime = "application/x-cpio", ext = ["cpio"], description = "cpio archive")
+type("archive.crx", parents = ["archive"], mime = "application/crx", ext = ["crx"], description = "Chrome extension package")
+type("archive.deb", parents = ["archive.ar"], mime = "application/vnd.debian.binary-package", ext = ["deb"], description = "Debian package")
+type("archive.ear", parents = ["archive.zip"], mime = "application/java-archive", ext = ["ear"], description = "Java enterprise archive")
+type("archive.jar", parents = ["archive.zip"], mime = "application/java-archive", ext = ["jar"], description = "Java archive (ZIP with META-INF/MANIFEST.MF)")
+type("archive.kgb", parents = ["archive"], mime = "application/x-kgb-compressed", ext = ["kgb"], description = "KGB archive")
+type("archive.rar", parents = ["archive"], mime = "application/x-rar-compressed", ext = ["rar"], description = "RAR archive")
+type("archive.rpm", parents = ["archive"], mime = "application/x-rpm", ext = ["rpm"], description = "RPM package")
+type("archive.tar", parents = ["archive"], mime = "application/x-tar", ext = ["tar"], description = "tar archive")
+type("archive.war", parents = ["archive.zip"], mime = "application/java-archive", ext = ["war"], description = "Java web application archive")
+type("archive.zip", parents = ["archive"], mime = "application/zip", ext = ["zip"], description = "ZIP archive")
