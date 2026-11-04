@@ -20,7 +20,7 @@ the same way.
 
 <p align="center">
   <a href="assets/classify-pipeline.svg">
-    <img src="assets/classify-pipeline.svg" alt="Roots, signatures, worklist, merge, anomalies and derivation; each child is classified the same way." width="100%">
+    <img src="assets/classify-pipeline.svg" alt="Six steps from left to right: roots, signatures, classifiers, merge, anomalies, derive; each child repeats them." width="100%">
   </a>
 </p>
 

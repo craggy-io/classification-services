@@ -34,7 +34,7 @@ several processes can share.
 
 <p align="center">
   <a href="docs/assets/classification-services-architecture.svg">
-    <img src="docs/assets/classification-services-architecture.svg" alt="Classification Services architecture: Classify loads Definitions, Catalog and Signatures, runs Probes over shared Views, and caches through the paged reader and workdir cache; the evidence vocabulary spans every layer." width="100%">
+    <img src="docs/assets/classification-services-architecture.svg" alt="Five tiers, each using the one below: CLI and adapter; Classify; catalog, signatures and definitions; probes and views; cache and paged input." width="100%">
   </a>
 </p>
 

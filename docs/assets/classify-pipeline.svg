@@ -1,53 +1,41 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="560" viewBox="0 0 1440 560" role="img" aria-labelledby="title desc">
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="350" viewBox="0 0 1440 350" role="img" aria-labelledby="title desc">
 <title id="title">How one input is classified</title>
-<desc id="desc">Roots are asserted, signatures add candidates, the worklist runs classifiers whose required types hold, assertions merge with rejections and inheritance, anomalies are added, and derived children are classified recursively into a content DAG.</desc>
+<desc id="desc">Six steps from left to right: assert the roots, match signatures, run classifiers whose requirements hold, merge assertions, add anomalies, derive children. Each child goes through the same six steps.</desc>
 <defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M1 1 L9 5 L1 9" fill="none" stroke="#FFB547" stroke-width="1.5"/></marker></defs>
-<rect width="1440" height="560" rx="20" fill="#111A20"/>
+<rect width="1440" height="350" rx="20" fill="#111A20"/>
 <g font-family="'JetBrains Mono', Consolas, 'Liberation Mono', monospace">
 <text x="40" y="53" font-size="28" fill="#FFB547" font-weight="700" text-anchor="start">&gt; CLASSIFY</text>
-<text x="40" y="87" font-size="22" fill="#E4ECE7" font-weight="400" text-anchor="start">One input, start to finish</text>
-<text x="1400" y="53" font-size="18" fill="#E4ECE7" font-weight="400" text-anchor="end">PIPELINE</text>
-<path d="M40 111 H1400" fill="none" stroke="#2A2F2C" stroke-width="2" />
-<rect x="40" y="150" width="200" height="190" rx="12" fill="#16222A" stroke="#4A3F2C" stroke-width="1.5"/>
-<path d="M62 172 H96" fill="none" stroke="#FFB547" stroke-width="3" />
-<text x="62" y="210" font-size="26" fill="#E4ECE7" font-weight="700" text-anchor="start">Roots</text>
-<text x="62" y="246" font-size="19" fill="#E4ECE7" font-weight="400" text-anchor="start">bytes</text>
-<text x="62" y="276" font-size="19" fill="#E4ECE7" font-weight="400" text-anchor="start">(+ text)</text>
-<path d="M240 245 H272" fill="none" stroke="#FFB547" stroke-width="2" marker-end="url(#arrow)"/>
-<rect x="272" y="150" width="200" height="190" rx="12" fill="#16222A" stroke="#4A3F2C" stroke-width="1.5"/>
-<path d="M294 172 H328" fill="none" stroke="#FFB547" stroke-width="3" />
-<text x="294" y="210" font-size="26" fill="#E4ECE7" font-weight="700" text-anchor="start">Signatures</text>
-<text x="294" y="246" font-size="19" fill="#E4ECE7" font-weight="400" text-anchor="start">prefix read</text>
-<text x="294" y="276" font-size="19" fill="#E4ECE7" font-weight="400" text-anchor="start">candidates</text>
-<path d="M472 245 H504" fill="none" stroke="#FFB547" stroke-width="2" marker-end="url(#arrow)"/>
-<rect x="504" y="150" width="200" height="190" rx="12" fill="#16222A" stroke="#4A3F2C" stroke-width="1.5"/>
-<path d="M526 172 H560" fill="none" stroke="#FFB547" stroke-width="3" />
-<text x="526" y="210" font-size="26" fill="#E4ECE7" font-weight="700" text-anchor="start">Worklist</text>
-<text x="526" y="246" font-size="19" fill="#E4ECE7" font-weight="400" text-anchor="start">requires gate</text>
-<text x="526" y="276" font-size="19" fill="#E4ECE7" font-weight="400" text-anchor="start">parallel runs</text>
-<path d="M704 245 H736" fill="none" stroke="#FFB547" stroke-width="2" marker-end="url(#arrow)"/>
-<rect x="736" y="150" width="200" height="190" rx="12" fill="#16222A" stroke="#4A3F2C" stroke-width="1.5"/>
-<path d="M758 172 H792" fill="none" stroke="#FFB547" stroke-width="3" />
-<text x="758" y="210" font-size="26" fill="#E4ECE7" font-weight="700" text-anchor="start">Merge</text>
-<text x="758" y="246" font-size="19" fill="#E4ECE7" font-weight="400" text-anchor="start">rejections</text>
-<text x="758" y="276" font-size="19" fill="#E4ECE7" font-weight="400" text-anchor="start">inheritance</text>
-<path d="M936 245 H968" fill="none" stroke="#FFB547" stroke-width="2" marker-end="url(#arrow)"/>
-<rect x="968" y="150" width="200" height="190" rx="12" fill="#16222A" stroke="#4A3F2C" stroke-width="1.5"/>
-<path d="M990 172 H1024" fill="none" stroke="#FFB547" stroke-width="3" />
-<text x="990" y="210" font-size="26" fill="#E4ECE7" font-weight="700" text-anchor="start">Anomalies</text>
-<text x="990" y="246" font-size="19" fill="#E4ECE7" font-weight="400" text-anchor="start">polyglot</text>
-<text x="990" y="276" font-size="19" fill="#E4ECE7" font-weight="400" text-anchor="start">name hint</text>
-<path d="M1168 245 H1200" fill="none" stroke="#FFB547" stroke-width="2" marker-end="url(#arrow)"/>
-<rect x="1200" y="150" width="200" height="190" rx="12" fill="#16222A" stroke="#4A3F2C" stroke-width="1.5"/>
-<path d="M1222 172 H1256" fill="none" stroke="#FFB547" stroke-width="3" />
-<text x="1222" y="210" font-size="26" fill="#E4ECE7" font-weight="700" text-anchor="start">Derive</text>
-<text x="1222" y="246" font-size="19" fill="#E4ECE7" font-weight="400" text-anchor="start">children by</text>
-<text x="1222" y="276" font-size="19" fill="#E4ECE7" font-weight="400" text-anchor="start">digest (DAG)</text>
-<path d="M1272 340 V380 H140 V340" fill="none" stroke="#FFB547" stroke-width="2" marker-end="url(#arrow)"/>
-<text x="706" y="405" font-size="17" fill="#FFB547" font-weight="400" text-anchor="middle">each child is classified the same way (cycle, depth, size and ratio limits)</text>
-<rect x="40" y="440" width="1360" height="84" rx="12" fill="#2A2F2C" stroke="#7A5C30"/>
-<text x="62" y="475" font-size="22" fill="#FFB547" font-weight="700" text-anchor="start">CACHED PER STEP</text>
-<text x="62" y="506" font-size="18" fill="#E4ECE7" font-weight="400" text-anchor="start">Workdir</text>
-<text x="560" y="475" font-size="21" fill="#E4ECE7" font-weight="400" text-anchor="start">Classifier outputs keyed by (digest, classifier@revision)</text>
-<text x="560" y="506" font-size="19" fill="#E4ECE7" font-weight="400" text-anchor="start">Whole results keyed by (digest, snapshot, depth)</text>
+<text x="40" y="87" font-size="20" fill="#93A39A" font-weight="400" text-anchor="start">One input, six steps; every child repeats them</text>
+<path d="M40 111 H1400" fill="none" stroke="#2A2F2C" stroke-width="2"/>
+<text x="40" y="158" font-size="16" fill="#FFB547" font-weight="700" text-anchor="start">01</text>
+<rect x="40" y="170" width="198" height="92" rx="12" fill="#16222A" stroke="#4A3F2C" stroke-width="1.5"/>
+<text x="139" y="208" font-size="22" fill="#E4ECE7" font-weight="700" text-anchor="middle">Roots</text>
+<text x="139" y="238" font-size="16" fill="#93A39A" font-weight="400" text-anchor="middle">bytes, text</text>
+<path d="M242 216 H268" fill="none" stroke="#FFB547" stroke-width="2" marker-end="url(#arrow)"/>
+<text x="272" y="158" font-size="16" fill="#FFB547" font-weight="700" text-anchor="start">02</text>
+<rect x="272" y="170" width="198" height="92" rx="12" fill="#16222A" stroke="#4A3F2C" stroke-width="1.5"/>
+<text x="371" y="208" font-size="22" fill="#E4ECE7" font-weight="700" text-anchor="middle">Signatures</text>
+<text x="371" y="238" font-size="16" fill="#93A39A" font-weight="400" text-anchor="middle">candidates</text>
+<path d="M474 216 H500" fill="none" stroke="#FFB547" stroke-width="2" marker-end="url(#arrow)"/>
+<text x="504" y="158" font-size="16" fill="#FFB547" font-weight="700" text-anchor="start">03</text>
+<rect x="504" y="170" width="198" height="92" rx="12" fill="#16222A" stroke="#4A3F2C" stroke-width="1.5"/>
+<text x="603" y="208" font-size="22" fill="#E4ECE7" font-weight="700" text-anchor="middle">Classifiers</text>
+<text x="603" y="238" font-size="16" fill="#93A39A" font-weight="400" text-anchor="middle">when ready</text>
+<path d="M706 216 H732" fill="none" stroke="#FFB547" stroke-width="2" marker-end="url(#arrow)"/>
+<text x="736" y="158" font-size="16" fill="#FFB547" font-weight="700" text-anchor="start">04</text>
+<rect x="736" y="170" width="198" height="92" rx="12" fill="#16222A" stroke="#4A3F2C" stroke-width="1.5"/>
+<text x="835" y="208" font-size="22" fill="#E4ECE7" font-weight="700" text-anchor="middle">Merge</text>
+<text x="835" y="238" font-size="16" fill="#93A39A" font-weight="400" text-anchor="middle">levels, rejects</text>
+<path d="M938 216 H964" fill="none" stroke="#FFB547" stroke-width="2" marker-end="url(#arrow)"/>
+<text x="968" y="158" font-size="16" fill="#FFB547" font-weight="700" text-anchor="start">05</text>
+<rect x="968" y="170" width="198" height="92" rx="12" fill="#16222A" stroke="#4A3F2C" stroke-width="1.5"/>
+<text x="1067" y="208" font-size="22" fill="#E4ECE7" font-weight="700" text-anchor="middle">Anomalies</text>
+<text x="1067" y="238" font-size="16" fill="#93A39A" font-weight="400" text-anchor="middle">flag oddities</text>
+<path d="M1170 216 H1196" fill="none" stroke="#FFB547" stroke-width="2" marker-end="url(#arrow)"/>
+<text x="1200" y="158" font-size="16" fill="#FFB547" font-weight="700" text-anchor="start">06</text>
+<rect x="1200" y="170" width="198" height="92" rx="12" fill="#16222A" stroke="#4A3F2C" stroke-width="1.5"/>
+<text x="1299" y="208" font-size="22" fill="#E4ECE7" font-weight="700" text-anchor="middle">Derive</text>
+<text x="1299" y="238" font-size="16" fill="#93A39A" font-weight="400" text-anchor="middle">find children</text>
+<path d="M1299 266 V302 H139 V270" fill="none" stroke="#FFB547" stroke-width="2" marker-end="url(#arrow)"/>
+<text x="719" y="294" font-size="16" fill="#FFB547" font-weight="400" text-anchor="middle">for each child</text>
 </g></svg>
