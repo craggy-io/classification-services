@@ -4,7 +4,3 @@ use (
 	.
 	./adapters/artifactsvc
 )
-
-// Develop the adapter against this checkout rather than the version its
-// go.mod pins.
-replace github.com/craggy-io/classification-services => ./
