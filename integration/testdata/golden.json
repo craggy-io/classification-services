@@ -1,0 +1,408 @@
+{
+  "Main.java": {
+    "primary": "source.java",
+    "direct": [
+      "source.java@recognised",
+      "text@validated"
+    ]
+  },
+  "app.apk": {
+    "primary": "android.apk",
+    "direct": [
+      "android.apk@validated",
+      "archive.zip@validated"
+    ],
+    "children": [
+      {
+        "primary": "android.axml",
+        "direct": [
+          "android.axml@validated"
+        ],
+        "name": "AndroidManifest.xml"
+      },
+      {
+        "primary": "android.dex",
+        "direct": [
+          "android.dex@validated"
+        ],
+        "name": "classes.dex"
+      },
+      {
+        "primary": "executable.elf",
+        "direct": [
+          "executable.elf@validated"
+        ],
+        "name": "lib/arm64-v8a/libnative.so"
+      },
+      {
+        "primary": "data.json",
+        "direct": [
+          "data.json@validated",
+          "text@validated"
+        ],
+        "name": "assets/config.json"
+      }
+    ]
+  },
+  "capture.pcap": {
+    "primary": "network.pcap",
+    "direct": [
+      "network.pcap@validated"
+    ]
+  },
+  "compressed.xz": {
+    "primary": "compression.xz",
+    "direct": [
+      "compression.xz@validated"
+    ]
+  },
+  "data.json": {
+    "primary": "data.json",
+    "direct": [
+      "data.json@validated",
+      "text@validated"
+    ]
+  },
+  "debug.apk": {
+    "primary": "android.apk",
+    "direct": [
+      "android.apk@validated",
+      "archive.zip@validated"
+    ],
+    "anomalies": [
+      "warning:android.debuggable",
+      "warning:android.unsigned"
+    ],
+    "children": [
+      {
+        "primary": "android.axml",
+        "direct": [
+          "android.axml@validated"
+        ],
+        "name": "AndroidManifest.xml"
+      },
+      {
+        "primary": "android.dex",
+        "direct": [
+          "android.dex@validated"
+        ],
+        "name": "classes.dex"
+      }
+    ]
+  },
+  "elf-with-zip": {
+    "primary": "executable.elf",
+    "direct": [
+      "archive.zip@validated",
+      "executable.elf@validated"
+    ],
+    "anomalies": [
+      "warning:executable.overlay",
+      "warning:polyglot",
+      "warning:zip.prepended-data"
+    ],
+    "children": [
+      {
+        "primary": "archive.zip",
+        "direct": [
+          "archive.zip@validated"
+        ],
+        "children": [
+          {
+            "primary": "source.bash",
+            "direct": [
+              "source.bash@recognised",
+              "text@validated"
+            ],
+            "name": "stage2.sh"
+          }
+        ],
+        "name": "overlay"
+      },
+      {
+        "primary": "executable.elf",
+        "direct": [
+          "executable.elf@validated"
+        ],
+        "name": "prepended data"
+      },
+      {
+        "primary": "source.bash",
+        "direct": [
+          "source.bash@recognised",
+          "text@validated"
+        ],
+        "name": "stage2.sh"
+      }
+    ]
+  },
+  "encoded.b64": {
+    "primary": "encoding.base64",
+    "direct": [
+      "encoding.base64@recognised",
+      "text@validated"
+    ],
+    "children": [
+      {
+        "primary": "data.json",
+        "direct": [
+          "data.json@validated",
+          "text@validated"
+        ],
+        "name": "base64"
+      }
+    ]
+  },
+  "extension.crx": {
+    "primary": "archive.crx",
+    "direct": [
+      "archive.crx@validated",
+      "archive.zip@validated"
+    ],
+    "anomalies": [
+      "warning:zip.prepended-data"
+    ],
+    "children": [
+      {
+        "primary": "archive.zip",
+        "direct": [
+          "archive.zip@validated"
+        ],
+        "children": [
+          {
+            "primary": "data.json",
+            "direct": [
+              "data.json@validated",
+              "text@validated"
+            ],
+            "name": "manifest.json"
+          }
+        ],
+        "name": "extension.zip"
+      },
+      {
+        "primary": "archive.crx",
+        "direct": [
+          "archive.crx@candidate"
+        ],
+        "name": "prepended data"
+      },
+      {
+        "primary": "data.json",
+        "direct": [
+          "data.json@validated",
+          "text@validated"
+        ],
+        "name": "manifest.json"
+      }
+    ]
+  },
+  "form.pdf": {
+    "primary": "document.pdf",
+    "direct": [
+      "document.pdf@validated",
+      "text@validated"
+    ],
+    "anomalies": [
+      "warning:pdf.auto-action",
+      "warning:pdf.javascript"
+    ]
+  },
+  "hash.sha256": {
+    "primary": "crypto.digest",
+    "direct": [
+      "crypto.digest@validated",
+      "encoding.base64@recognised",
+      "encoding.hex@validated",
+      "text@validated"
+    ]
+  },
+  "image.svg": {
+    "primary": "image.svg",
+    "direct": [
+      "data.xml@validated",
+      "image.svg@validated",
+      "text@validated"
+    ]
+  },
+  "legacy.xls": {
+    "primary": "document.xls",
+    "direct": [
+      "document.ole2@validated",
+      "document.xls@validated"
+    ],
+    "anomalies": [
+      "warning:document.macros"
+    ]
+  },
+  "library.jar": {
+    "primary": "archive.jar",
+    "direct": [
+      "archive.jar@validated",
+      "archive.zip@validated"
+    ],
+    "children": [
+      {
+        "primary": "text",
+        "direct": [
+          "text@validated"
+        ],
+        "name": "META-INF/MANIFEST.MF"
+      }
+    ]
+  },
+  "logs.tar.gz": {
+    "primary": "compression.gzip",
+    "direct": [
+      "compression.gzip@validated"
+    ],
+    "children": [
+      {
+        "primary": "archive.tar",
+        "direct": [
+          "archive.tar@validated"
+        ],
+        "children": [
+          {
+            "primary": "text",
+            "direct": [
+              "text@validated"
+            ],
+            "name": "app.log"
+          },
+          {
+            "primary": "network.pcap",
+            "direct": [
+              "network.pcap@validated"
+            ],
+            "name": "trace.pcap"
+          }
+        ],
+        "name": "logs.tar"
+      }
+    ]
+  },
+  "macro.docm": {
+    "primary": "document.docx",
+    "direct": [
+      "archive.zip@validated",
+      "document.docx@validated",
+      "document.ooxml@validated"
+    ],
+    "anomalies": [
+      "warning:document.macros"
+    ],
+    "children": [
+      {
+        "primary": "data.xml",
+        "direct": [
+          "data.xml@validated",
+          "text@validated"
+        ],
+        "name": "[Content_Types].xml"
+      },
+      {
+        "primary": "data.xml",
+        "direct": [
+          "data.xml@validated",
+          "text@validated"
+        ],
+        "name": "word/document.xml"
+      },
+      {
+        "primary": "bytes",
+        "direct": null,
+        "name": "word/vbaProject.bin"
+      }
+    ]
+  },
+  "module.wasm": {
+    "primary": "executable.wasm",
+    "direct": [
+      "executable.wasm@validated"
+    ]
+  },
+  "notes.txt": {
+    "primary": "text",
+    "direct": [
+      "text@validated"
+    ]
+  },
+  "plugin.dll": {
+    "primary": "executable.dotnet",
+    "direct": [
+      "executable.dotnet@validated",
+      "executable.pe-dll@validated",
+      "executable.pe@validated"
+    ]
+  },
+  "random.bin": {
+    "primary": "bytes",
+    "direct": null
+  },
+  "report.pdf": {
+    "primary": "executable.pe",
+    "direct": [
+      "executable.pe@validated"
+    ],
+    "anomalies": [
+      "critical:extension-mismatch"
+    ]
+  },
+  "run.sh": {
+    "primary": "source.python",
+    "direct": [
+      "source.python@recognised",
+      "text@validated"
+    ]
+  },
+  "service.exe": {
+    "primary": "executable.pe",
+    "direct": [
+      "executable.pe@validated"
+    ]
+  },
+  "slip.zip": {
+    "primary": "archive.zip",
+    "direct": [
+      "archive.zip@validated"
+    ],
+    "anomalies": [
+      "critical:zip.path-traversal"
+    ],
+    "children": [
+      {
+        "primary": "text",
+        "direct": [
+          "text@validated"
+        ],
+        "name": "../../../../tmp/owned"
+      }
+    ]
+  },
+  "token.jwt": {
+    "primary": "crypto.jwt",
+    "direct": [
+      "crypto.jwt@validated",
+      "text@validated"
+    ],
+    "anomalies": [
+      "warning:crypto.jwt-unsigned"
+    ]
+  },
+  "utf16.txt": {
+    "primary": "charset.utf16le",
+    "direct": [
+      "charset.utf16le@validated"
+    ],
+    "children": [
+      {
+        "primary": "text",
+        "direct": [
+          "text@validated"
+        ],
+        "name": "utf-8"
+      }
+    ]
+  }
+}

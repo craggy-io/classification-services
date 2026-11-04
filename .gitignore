@@ -1,0 +1,5 @@
+/craggy-classify
+/craggy-classify.exe
+*.test
+*.prof
+/testdata/fuzz-scratch/

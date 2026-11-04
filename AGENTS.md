@@ -1,0 +1,66 @@
+# Classification Services: coding-agent integration guide
+
+Use this guide when editing this repository or integrating its Go module,
+`github.com/craggy-io/classification-services`, into a consumer. Repository
+development rules below apply to work here. Consumers should explicitly provide
+this guide to their coding agent; installing a dependency does not imply its
+AGENTS.md is read. Start with the [walkthrough](docs/walkthrough.md).
+
+## Choose the owning package
+
+| Need | Package and contract |
+| --- | --- |
+| Classify content, read results, explain, batch, install definitions | [`classify`](docs/classify.md) |
+| Write a Starlark definition (types, signatures, classifiers, tests) | [`definitions`](docs/definitions.md) |
+| Type names, parents, `IsA` | [`catalog`](docs/catalog.md) |
+| Byte signatures | [`signatures`](docs/signatures.md) |
+| A new structural parser or native recogniser | [`views`, `probes`](docs/recognisers.md) |
+| Store results in artifact-services | [`adapters/artifactsvc`](docs/artifact-services.md) (separate module) |
+| Shell or CI use | [`cmd/craggy-classify`](docs/cli.md) |
+
+Dependencies run one way: `evidence` ← `catalog`, `signatures`, `views`;
+`views` ← `probes`; `views`, `catalog`, `signatures` ← `definitions`; all ←
+`classify` ← `cmd`. `probes` never imports `classify`, and `definitions` never
+imports `probes`. The core module imports only the standard library and
+`go.starlark.net`. It must never import artifact-services: integration
+belongs in `adapters/`.
+
+## Adding a format
+
+Prefer, in order:
+
+1. **A Starlark module** when the logic fits the `ctx` API. Put built-ins in `defs/classifiers/` with `test()` cases. Runtime users call `Check`, then `Preview`, then `Define`.
+2. **A view plus a probe** when parsing needs Go: add `views/<format>.go` (standard library only, bounded reads, `Describe()` for Starlark) and register it in `views.go`; add the probe to `probes/` and to `Builtins()`; bump `probes.Revision`.
+3. **Types** go in `defs/types/<namespace>.star` under an existing namespace. A new namespace needs an abstract namespace type. Every concrete type needs a description.
+
+Then add tests: a view test, a probe test, and a sample in
+`integration/corpus_test.go` (regenerate with `go test ./integration -update`
+and review the golden diff).
+
+## Using the engine
+
+- `Open` needs a workdir. One workdir may be shared by several processes; `Refresh` (or `WithAutoRefresh`) picks up their definitions. Call `Maintain` periodically; nothing prunes the cache implicitly.
+- Read `Result.Primary`, `Is`/`IsAtLeast`, `Anomalies`, `Children`. `Complete` and `Limitations` describe one node: use `AllLimitations()` to see truncation anywhere in the DAG.
+- Switch on anomaly `Code`, never `Message`. Severities are `info`, `warning` and `critical`.
+- Name hints (`Source.Named`, `File`) only add `extension-mismatch`; they never change types.
+- `Define` refuses a module whose tests fail (`*CheckError`). Write tests for every definition, including a negative test (`absent=`).
+- Native classifiers: set `Spec.Revision` and change it with behaviour; only assert types in `Produces`; return failures as errors (they become limitations and are not cached).
+- Definitions are trusted code; never install modules from untrusted sources.
+
+## Developing and verifying in this repository
+
+- Preserve concurrent edits and reread before patching. Use `rg` for searches.
+- Check existing helpers before adding boilerplate (`internal/testkit` builds sample files; extend it rather than adding binary fixtures).
+- After changing a data model, trace every reader, encoder (`classify/codec.go`), printer (`cmd`), adapter table and doc. Bump `codecVersion` when the cache encoding changes.
+- Fully remove obsolete code rather than adding compatibility shims or aliases.
+- Keep docs and the golden file in step with behaviour. The anomaly table in `docs/recognisers.md` must list every code.
+- Verify by running the affected tests. Report what ran and any limits; an unrun check is not a pass.
+
+```sh
+go build ./... && go vet ./... && go test ./...
+go test -race ./...
+(cd adapters/artifactsvc && go test ./...)
+```
+
+See [verification](docs/verification.md) for fuzzing, benchmarks and the
+last recorded run.

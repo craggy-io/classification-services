@@ -1,0 +1,4 @@
+github.com/chzyer/readline v1.5.1/go.mod h1:Eh+b79XXUwfKfcPLepksvw2tcLE/Ct21YObkaSkeBlk=
+github.com/craggy-io/artifact-services v0.0.0-20261104150947-32b176f8c2fa h1:lJ++tBwxPL0HIzQlWlGqmOCj95rPhpBPOPertG/PPME=
+github.com/craggy-io/artifact-services v0.0.0-20261104150947-32b176f8c2fa/go.mod h1:uV3Ka4zSZOGFrqNRiiAP3DbefO+GEpmEZuDFBU/2XzE=
+golang.org/x/term v0.41.0/go.mod h1:3pfBgksrReYfZ5lvYM0kSO0LIkAl4Yl2bXOkKP7Ec2A=

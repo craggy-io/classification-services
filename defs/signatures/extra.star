@@ -1,0 +1,21 @@
+"""Signatures for formats the CyberChef set does not cover.
+Types live in types/*.star; validators raise or refute these candidates."""
+
+signature("data.xml", at(0, "3c3f786d6c20"), id = "xml-declaration")
+signature("executable.macho-universal", at(0, "cafebabe"), id = "fat-magic")
+signature("executable.macho", at(0, "cefaedfe"), id = "mh-magic-le")
+signature("executable.macho", at(0, "cffaedfe"), id = "mh-magic-64-le")
+signature("executable.macho", at(0, "feedface"), id = "mh-magic-be")
+signature("executable.macho", at(0, "feedfacf"), id = "mh-magic-64-be")
+signature("archive.ar", at(0, b"!<arch>\n"), id = "ar-magic")
+signature("archive.cpio", at(0, b"07070"), id = "cpio-ascii")
+signature("archive.rpm", at(0, "edabeedb"), id = "rpm-lead")
+signature("compression.zstd", at(0, "28b52ffd"), id = "zstd-frame")
+signature("network.pcap", at(0, "d4c3b2a1"), id = "pcap-le")
+signature("network.pcap", at(0, "a1b2c3d4"), id = "pcap-be")
+signature("network.pcap", at(0, "4d3cb2a1"), id = "pcap-ns-le")
+signature("network.pcapng", at(0, "0a0d0d0a"), id = "pcapng-shb")
+signature("document.ole2", at(0, "d0cf11e0a1b11ae1"), id = "cfb-magic")
+signature("android.axml", at(0, "03000800"), id = "axml-chunk")
+signature("android.dex", at(0, b"dex\n"), id = "dex-magic")
+signature("crypto.pem", at(0, b"-----BEGIN "), id = "pem-armour")

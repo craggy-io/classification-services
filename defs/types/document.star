@@ -1,0 +1,22 @@
+"""Documents."""
+
+type("document", parents = ["bytes"], abstract = True, description = "Documents")
+
+type("document.chm", parents = ["document"], mime = "application/vnd.ms-htmlhelp", ext = ["chi", "chm", "chw"], description = "Compiled HTML Help")
+type("document.doc", parents = ["document.ole2"], mime = "application/msword", ext = ["doc", "dot"], description = "Word document (legacy)")
+type("document.docx", parents = ["document.ooxml"], mime = "application/vnd.openxmlformats-officedocument.wordprocessingml.document", ext = ["docx", "docm", "dotx"], description = "Word document (OOXML)")
+type("document.dwg", parents = ["document"], mime = "application/acad", ext = ["123d", "dwg", "dwt"], description = "AutoCAD drawing")
+type("document.eps", parents = ["document.postscript"], mime = "application/eps", ext = ["ai", "eps"], description = "Encapsulated PostScript")
+type("document.epub", parents = ["archive.zip", "document"], mime = "application/epub+zip", ext = ["epub"], description = "EPUB e-book")
+type("document.odf", parents = ["archive.zip", "document"], mime = "application/vnd.oasis.opendocument.text", ext = ["odt", "ods", "odp", "odg"], description = "OpenDocument")
+type("document.ole2", parents = ["document"], mime = "application/msword", ext = ["db", "doc", "dot", "msg", "msi", "ole2", "pot", "ppa", "pps", "ppt", "sdw", "vsd", "xla", "xls"], description = "Compound File Binary (OLE2) container")
+type("document.onenote", parents = ["document"], mime = "application/onenote", ext = ["one"], description = "OneNote document")
+type("document.ooxml", parents = ["archive.zip", "document"], mime = "application/vnd.openxmlformats-officedocument.wordprocessingml.document", ext = ["docx", "pptx", "xlsx"], description = "Office Open XML document")
+type("document.pdf", parents = ["document"], mime = "application/pdf", ext = ["pdf"], description = "PDF document")
+type("document.postscript", parents = ["document"], mime = "application/postscript", ext = ["ai", "eps", "pfa", "ps"], description = "PostScript")
+type("document.ppt", parents = ["document.ole2"], mime = "application/vnd.ms-powerpoint", ext = ["ppt", "pps", "pot"], description = "PowerPoint presentation (legacy)")
+type("document.pptx", parents = ["document.ooxml"], mime = "application/vnd.openxmlformats-officedocument.presentationml.presentation", ext = ["pptx", "pptm", "potx"], description = "PowerPoint presentation (OOXML)")
+type("document.rtf", parents = ["document"], mime = "application/rtf", ext = ["rtf"], description = "Rich Text Format")
+type("document.wordperfect", parents = ["document"], mime = "application/wordperfect", ext = ["bk!", "wcm", "wp", "wp5", "wp6", "wpd", "wpp"], description = "WordPerfect document")
+type("document.xls", parents = ["document.ole2"], mime = "application/vnd.ms-excel", ext = ["xls", "xla", "xlt"], description = "Excel workbook (legacy)")
+type("document.xlsx", parents = ["document.ooxml"], mime = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", ext = ["xlsx", "xlsm", "xltx"], description = "Excel workbook (OOXML)")
