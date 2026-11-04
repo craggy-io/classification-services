@@ -30,10 +30,12 @@ go test ./classify -run xxx -bench .
 | Built-in catalogue conventions | `classify/catalogue_test.go` |
 | CLI commands and exit codes | `cmd/craggy-classify/main_test.go` |
 | Golden results for 26 generated files; two engines sharing one workdir concurrently | `integration/corpus_test.go` |
+| Every file in `samples/` classifies as its README says, and `widgets.star` passes its tests | `integration/samples_test.go` |
 | Adapter: classify an artifact, publish report and typed tables, sql-v1 query, lineage records, idempotent republish, observability bridge | `adapters/artifactsvc/artifactsvc_test.go` |
 
-All sample files are generated in code (`internal/testkit`); the repository
-holds no binary fixtures. The golden file is regenerated with
+Test inputs are generated in code (`internal/testkit`). The only binary files
+in the repository are the small examples in `samples/`, generated the same way
+for people to try. The golden file is regenerated with
 `go test ./integration -update`. Review its diff: it is the record of
 behaviour changes.
 
