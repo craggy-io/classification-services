@@ -47,13 +47,21 @@ stream, err := typed.Query(ctx, objects.QueryRequest{
 
 ## Development
 
-The repository's `go.work` joins the adapter to the root module. The
-adapter's `go.mod` requires the root module at a placeholder version, which
-`go.work` resolves to the local checkout. Once classification-services is
-published, pin a real version:
+The repository's `go.work` joins the adapter to the root module and resolves
+the root to this checkout, so changes to both are developed and tested
+together. The adapter's own `go.mod` pins a published commit of the core,
+which is what consumers get. Re-pin it after pushing core changes the adapter
+needs:
 
 ```sh
 cd adapters/artifactsvc
-GOWORK=off go get github.com/craggy-io/classification-services@<commit or tag>
+GOWORK=off go get github.com/craggy-io/classification-services@<commit>
 GOWORK=off go mod tidy
+```
+
+The repository is private, so Go must fetch it directly rather than through
+the public module proxy:
+
+```sh
+go env -w GOPRIVATE=github.com/craggy-io/classification-services
 ```

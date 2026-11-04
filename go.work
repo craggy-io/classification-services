@@ -5,6 +5,6 @@ use (
 	./adapters/artifactsvc
 )
 
-// The adapter module requires the root module by a placeholder version
-// until classification-services is published; resolve it to this checkout.
-replace github.com/craggy-io/classification-services v0.0.0-00010101000000-000000000000 => ./
+// Develop the adapter against this checkout rather than the version its
+// go.mod pins.
+replace github.com/craggy-io/classification-services => ./
