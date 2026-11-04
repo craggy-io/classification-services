@@ -99,12 +99,6 @@ func ZIPEntries(_ context.Context, in Input) ([]Finding, error) {
 		if e.IsDir || e.Encrypted {
 			continue
 		}
-		if e.Method == 0 && e.Size == e.CompressedSize {
-			if off, err := e.DataOffset(); err == nil && off+e.Size <= in.Size() {
-				out.Children = append(out.Children, Derived{Name: e.Name, Offset: off, Length: e.Size})
-				continue
-			}
-		}
 		if e.Size > lim.MaxDerivedBytes {
 			skippedLarge = append(skippedLarge, e.Name)
 			continue
@@ -112,6 +106,12 @@ func ZIPEntries(_ context.Context, in Input) ([]Finding, error) {
 		if e.CompressedSize > 0 && lim.MaxExpansion > 0 && float64(e.Size) > lim.MaxExpansion*float64(e.CompressedSize) {
 			skippedRatio = append(skippedRatio, e.Name)
 			continue
+		}
+		if e.Method == 0 && e.Size == e.CompressedSize {
+			if off, err := e.DataOffset(); err == nil && off >= 0 && e.Size <= in.Size()-off {
+				out.Children = append(out.Children, Derived{Name: e.Name, Offset: off, Length: e.Size})
+				continue
+			}
 		}
 		data, err := e.Read(lim.MaxDerivedBytes + 1)
 		if err != nil || int64(len(data)) > lim.MaxDerivedBytes {
@@ -210,7 +210,7 @@ func TarEntries(_ context.Context, in Input) ([]Finding, error) {
 		if err != nil {
 			break // a truncated or corrupt tail; keep what was read
 		}
-		if strings.HasPrefix(h.Name, "/") || slicesHasDotDot(h.Name) {
+		if views.EscapesRoot(h.Name) {
 			traversal = append(traversal, h.Name)
 		}
 		if h.Typeflag != tar.TypeReg || h.Size <= 0 {
@@ -232,15 +232,6 @@ func TarEntries(_ context.Context, in Input) ([]Finding, error) {
 		return nil, nil
 	}
 	return []Finding{out}, nil
-}
-
-func slicesHasDotDot(name string) bool {
-	for _, seg := range strings.Split(strings.ReplaceAll(name, `\`, "/"), "/") {
-		if seg == ".." {
-			return true
-		}
-	}
-	return false
 }
 
 // Ar validates a Unix ar archive, recognises Debian packages and derives

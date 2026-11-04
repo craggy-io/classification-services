@@ -28,6 +28,10 @@ type Host interface {
 	Facet(t string) (map[string]any, bool)
 }
 
+// defaultReadLimit bounds ctx.prefix/text/json and zip entry reads when
+// no explicit limit is given.
+const defaultReadLimit = 16 << 20
+
 // Limits bounds one classifier run.
 type Limits struct {
 	Steps           uint64 // Starlark execution steps; zero selects 4,000,000
@@ -84,7 +88,7 @@ func (c *Classifier) Run(ctx context.Context, host Host, lim Limits) (Output, er
 	if steps == 0 {
 		steps = 4_000_000
 	}
-	r := &run{host: host, lim: lim, derives: c.Derives, id: c.ID}
+	r := &run{ctx: ctx, host: host, lim: lim, derives: c.Derives, id: c.ID}
 	thread := &starlark.Thread{Name: "classifier:" + c.ID}
 	thread.SetMaxExecutionSteps(steps)
 	stop := context.AfterFunc(ctx, func() { thread.Cancel(context.Cause(ctx).Error()) })
@@ -100,12 +104,31 @@ func (c *Classifier) Run(ctx context.Context, host Host, lim Limits) (Output, er
 }
 
 type run struct {
-	host     Host
-	lim      Limits
-	derives  bool
-	id       string
-	out      Output
-	recorded map[*assertionValue]bool
+	ctx          context.Context
+	host         Host
+	lim          Limits
+	derives      bool
+	id           string
+	out          Output
+	recorded     map[*assertionValue]bool
+	derivedBytes int64 // cumulative Data bytes derived this run
+}
+
+// addDerived records a Data child, enforcing per-child and cumulative
+// MaxDerivedBytes so a loop cannot retain unbounded derived bytes before
+// the engine's own caps run.
+func (r *run) addDerived(d Derived) error {
+	if r.lim.MaxDerivedBytes > 0 {
+		if int64(len(d.Data)) > r.lim.MaxDerivedBytes {
+			return fmt.Errorf("%q exceeds MaxDerivedBytes", d.Name)
+		}
+		if int64(len(d.Data)) > r.lim.MaxDerivedBytes-r.derivedBytes {
+			return fmt.Errorf("derived data exceeds MaxDerivedBytes in total")
+		}
+	}
+	r.derivedBytes += int64(len(d.Data))
+	r.out.Derived = append(r.out.Derived, d)
+	return nil
 }
 
 func (r *run) record(a Assertion) *assertionValue {
@@ -197,11 +220,16 @@ func (r *run) ctxValue() starlark.Value {
 	}
 	limited := func(name string, fn func(limit int64) (starlark.Value, error)) *starlark.Builtin {
 		return builtin(name, func(args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
-			limit := h.Size()
+			// An omitted limit defaults to a bounded read, not the whole
+			// (possibly multi-gigabyte) input; pass limit explicitly for more.
+			limit := int64(-1)
 			if err := starlark.UnpackArgs(name, args, kwargs, "limit?", &limit); err != nil {
 				return nil, err
 			}
-			return fn(max(limit, 0))
+			if limit < 0 {
+				limit = min(h.Size(), defaultReadLimit)
+			}
+			return fn(limit)
 		})
 	}
 	attrs := map[string]starlark.Value{
@@ -285,10 +313,17 @@ func (r *run) find(args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value
 	if len(needle) == 0 {
 		return starlark.MakeInt64(start), nil
 	}
-	end := min(start+limit, r.host.Size())
+	start = max(start, 0)
+	end := r.host.Size()
+	if limit >= 0 && limit < end-start {
+		end = start + limit
+	}
 	const chunk = 64 << 10
 	var tail []byte
-	for pos := max(start, 0); pos < end; {
+	for pos := start; pos < end; {
+		if err := r.ctx.Err(); err != nil {
+			return nil, err
+		}
 		n := min(int64(chunk), end-pos)
 		b, err := r.read(pos, n)
 		if err != nil {
@@ -326,7 +361,11 @@ func (r *run) match(args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Valu
 		if a.Metadata == nil {
 			a.Metadata = map[string]any{}
 		}
-		a.Metadata[k] = toGo(v)
+		x, err := toGo(v)
+		if err != nil {
+			return nil, fmt.Errorf("ctx.match: %w", err)
+		}
+		a.Metadata[k] = x
 	}
 	return r.record(a), nil
 }
@@ -375,7 +414,11 @@ func (r *run) anomaly(args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Va
 			if a.Metadata == nil {
 				a.Metadata = map[string]any{}
 			}
-			a.Metadata[k] = toGo(v)
+			x, err := toGo(v)
+			if err != nil {
+				return nil, fmt.Errorf("ctx.anomaly: %w", err)
+			}
+			a.Metadata[k] = x
 		}
 	}
 	r.out.Anomalies = append(r.out.Anomalies, a)
@@ -403,10 +446,9 @@ func (r *run) derive(args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Val
 	if err != nil {
 		return nil, fmt.Errorf("ctx.derive: %w", err)
 	}
-	if r.lim.MaxDerivedBytes > 0 && int64(len(b)) > r.lim.MaxDerivedBytes {
-		return nil, fmt.Errorf("ctx.derive: %q exceeds MaxDerivedBytes", name)
+	if err := r.addDerived(Derived{Name: name, Data: bytes.Clone(b), Speculative: speculative}); err != nil {
+		return nil, fmt.Errorf("ctx.derive: %w", err)
 	}
-	r.out.Derived = append(r.out.Derived, Derived{Name: name, Data: bytes.Clone(b), Speculative: speculative})
 	return starlark.None, nil
 }
 
@@ -420,7 +462,7 @@ func (r *run) deriveRange(args starlark.Tuple, kwargs []starlark.Tuple) (starlar
 	if err := starlark.UnpackArgs("ctx.derive_range", args, kwargs, "name", &name, "offset", &off, "length", &n, "speculative?", &speculative); err != nil {
 		return nil, err
 	}
-	if off < 0 || n <= 0 || off+n > r.host.Size() {
+	if off < 0 || n <= 0 || off > r.host.Size() || n > r.host.Size()-off {
 		return nil, fmt.Errorf("ctx.derive_range: range (%d, %d) outside the input", off, n)
 	}
 	r.out.Derived = append(r.out.Derived, Derived{Name: name, Offset: off, Length: n, Speculative: speculative})
@@ -471,7 +513,9 @@ func (r *run) deriveEntry(args starlark.Tuple, kwargs []starlark.Tuple) (starlar
 	if int64(len(data)) > limit {
 		return nil, fmt.Errorf("ctx.derive_entry: entry %q exceeds MaxDerivedBytes", name)
 	}
-	r.out.Derived = append(r.out.Derived, Derived{Name: name, Data: data, Speculative: speculative})
+	if err := r.addDerived(Derived{Name: name, Data: data, Speculative: speculative}); err != nil {
+		return nil, fmt.Errorf("ctx.derive_entry: %w", err)
+	}
 	return starlark.None, nil
 }
 
@@ -521,7 +565,9 @@ func zipValue(z *views.Zip) starlark.Value {
 			"crc32":           starlark.MakeUint64(uint64(e.CRC32)),
 			"encrypted":       starlark.Bool(e.Encrypted),
 			"read": builtin("zip_entry.read", func(args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
-				limit := e.Size
+				// Default like zip.read: a declared uncompressed size can
+				// be gigabytes (zip bomb); pass limit explicitly for more.
+				limit := int64(defaultReadLimit)
 				if err := starlark.UnpackArgs("zip_entry.read", args, kwargs, "limit?", &limit); err != nil {
 					return nil, err
 				}
@@ -547,7 +593,7 @@ func zipValue(z *views.Zip) starlark.Value {
 		}),
 		"read": builtin("zip.read", func(args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 			var n string
-			limit := int64(16 << 20)
+			limit := int64(defaultReadLimit)
 			if err := starlark.UnpackArgs("zip.read", args, kwargs, "name", &n, "limit?", &limit); err != nil {
 				return nil, err
 			}

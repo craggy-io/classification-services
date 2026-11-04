@@ -64,6 +64,20 @@ func (e *CheckError) Error() string {
 	return fmt.Sprintf("classify: definition %q failed its tests: %s", e.Report.Module, strings.Join(failed, ", "))
 }
 
+// syncPersisted reloads the snapshot when another process changed the
+// persisted definitions since they were last loaded, so Define/Remove
+// build candidates on current state. Callers hold e.mu.
+func (e *Engine) syncPersisted() error {
+	_, fp, err := e.loadPersisted()
+	if err != nil {
+		return err
+	}
+	if fp != e.persisted {
+		return e.reload()
+	}
+	return nil
+}
+
 // candidate builds the snapshot that would result from installing (or,
 // with a nil module, removing) name. Callers hold e.mu.
 func (e *Engine) candidate(name string, mod *definitions.Module) (*snapshot, error) {
@@ -91,7 +105,7 @@ func (e *Engine) Check(ctx context.Context, name string, source []byte) (*CheckR
 		return nil, ErrClosed
 	}
 	sp := startSpan(e.cfg.observer, nil, "check", name)
-	mod, err := definitions.Load(name, source, e.store)
+	mod, err := definitions.LoadContext(ctx, name, source, e.store)
 	if err != nil {
 		sp.end(err)
 		return nil, err
@@ -154,16 +168,22 @@ func (e *Engine) runTest(ctx context.Context, snap *snapshot, t definitions.Test
 		tr.Anomalies = append(tr.Anomalies, a.Code)
 	}
 	for _, want := range t.Expect {
-		if !r.Is(want) {
+		if !snap.catalog.Has(want) {
+			tr.Failures = append(tr.Failures, fmt.Sprintf("unknown type %s in expect", want))
+		} else if !r.Is(want) {
 			tr.Failures = append(tr.Failures, fmt.Sprintf("expected %s", want))
 		}
 	}
 	for _, no := range t.Absent {
-		if r.Is(no) {
+		if !snap.catalog.Has(no) {
+			tr.Failures = append(tr.Failures, fmt.Sprintf("unknown type %s in absent", no))
+		} else if r.Is(no) {
 			tr.Failures = append(tr.Failures, fmt.Sprintf("did not expect %s", no))
 		}
 	}
-	if t.Primary != "" && r.Primary != t.Primary {
+	if t.Primary != "" && !snap.catalog.Has(t.Primary) {
+		tr.Failures = append(tr.Failures, fmt.Sprintf("unknown type %s in primary", t.Primary))
+	} else if t.Primary != "" && r.Primary != t.Primary {
 		tr.Failures = append(tr.Failures, fmt.Sprintf("primary is %s, want %s", r.Primary, t.Primary))
 	}
 	for _, code := range t.Anomalies {
@@ -184,14 +204,21 @@ func (e *Engine) Define(ctx context.Context, name string, source []byte) (*Check
 	if e.closed.Load() {
 		return nil, ErrClosed
 	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	sp := startSpan(e.cfg.observer, nil, "define", name)
-	mod, err := definitions.Load(name, source, e.store)
+	mod, err := definitions.LoadContext(ctx, name, source, e.store)
 	if err != nil {
 		sp.end(err)
 		return nil, err
 	}
 	e.mu.Lock()
 	defer e.mu.Unlock()
+	if err := e.syncPersisted(); err != nil {
+		sp.end(err)
+		return nil, err
+	}
 	cur := e.snap.Load()
 	cand, err := e.candidate(name, mod)
 	if err != nil {
@@ -199,6 +226,10 @@ func (e *Engine) Define(ctx context.Context, name string, source []byte) (*Check
 		return nil, err
 	}
 	rep := e.report(ctx, cur, cand, mod)
+	if err := ctx.Err(); err != nil {
+		sp.end(err)
+		return rep, err
+	}
 	if !rep.Passed() {
 		err := &CheckError{Report: rep}
 		sp.end(err)
@@ -208,9 +239,11 @@ func (e *Engine) Define(ctx context.Context, name string, source []byte) (*Check
 		sp.end(err)
 		return rep, fmt.Errorf("classify: persisting definition %q: %w", name, err)
 	}
-	e.install(cand)
-	if _, fp, err := e.loadPersisted(); err == nil {
-		e.persisted = fp
+	// Reload from disk rather than installing the candidate: definitions
+	// another process installed in the meantime must be picked up too.
+	if err := e.reload(); err != nil {
+		sp.end(err)
+		return rep, err
 	}
 	sp.end(nil)
 	return rep, nil
@@ -232,6 +265,10 @@ func (e *Engine) Remove(ctx context.Context, name string) error {
 	sp := startSpan(e.cfg.observer, nil, "remove", name)
 	e.mu.Lock()
 	defer e.mu.Unlock()
+	if err := e.syncPersisted(); err != nil {
+		sp.end(err)
+		return err
+	}
 	path := filepath.Join(e.store.DefinitionsDir(), name+".star")
 	if _, err := os.Stat(path); errors.Is(err, fs.ErrNotExist) {
 		err := fmt.Errorf("classify: definition %q is not installed in the workdir: %w", name, fs.ErrNotExist)
@@ -251,9 +288,11 @@ func (e *Engine) Remove(ctx context.Context, name string) error {
 		sp.end(err)
 		return err
 	}
-	e.install(cand)
-	if _, fp, err := e.loadPersisted(); err == nil {
-		e.persisted = fp
+	// As in Define, reload from disk so other processes' changes survive.
+	_ = cand
+	if err := e.reload(); err != nil {
+		sp.end(err)
+		return err
 	}
 	sp.end(nil)
 	return nil
@@ -318,7 +357,7 @@ func (e *Engine) Preview(ctx context.Context, name string, source []byte, source
 		return nil, ErrClosed
 	}
 	sp := startSpan(e.cfg.observer, nil, "preview", name)
-	mod, err := definitions.Load(name, source, e.store)
+	mod, err := definitions.LoadContext(ctx, name, source, e.store)
 	if err != nil {
 		sp.end(err)
 		return nil, err

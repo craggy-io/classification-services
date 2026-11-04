@@ -23,6 +23,7 @@ package definitions
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
@@ -98,6 +99,12 @@ var predeclared = map[string]bool{
 // Load compiles and runs a module's top level, collecting its declarations.
 // cache may be nil.
 func Load(name string, source []byte, cache ProgramCache) (*Module, error) {
+	return LoadContext(context.Background(), name, source, cache)
+}
+
+// LoadContext is Load with cancellation: ctx stops the module's top-level
+// execution (a step limit also applies).
+func LoadContext(ctx context.Context, name string, source []byte, cache ProgramCache) (*Module, error) {
 	if !ValidName(name) {
 		return nil, fmt.Errorf("definitions: invalid module name %q", name)
 	}
@@ -140,6 +147,8 @@ func Load(name string, source []byte, cache ProgramCache) (*Module, error) {
 	}
 	thread := &starlark.Thread{Name: "load:" + name}
 	thread.SetMaxExecutionSteps(10_000_000)
+	stop := context.AfterFunc(ctx, func() { thread.Cancel(context.Cause(ctx).Error()) })
+	defer stop()
 	globals, err := prog.Init(thread, env)
 	if err != nil {
 		return nil, fmt.Errorf("definitions: %s: %w", name, err)
@@ -148,7 +157,10 @@ func Load(name string, source []byte, cache ProgramCache) (*Module, error) {
 	for _, v := range globals {
 		v.Freeze()
 	}
+	// A classifier function need not be a global (run = make()), so freeze
+	// each one directly to freeze its closure freevars and defaults too.
 	for _, c := range mod.Classifiers {
+		c.fn.Freeze()
 		c.Module = name
 	}
 	return mod, nil
@@ -258,6 +270,9 @@ func at(args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 		if offset < 0 {
 			return nil, fmt.Errorf("at: negative offset %d", offset)
 		}
+		if len(p) == 0 {
+			return nil, fmt.Errorf("at: empty pattern")
+		}
 		return &patternValue{p: signatures.Literal(offset, []byte(p))}, nil
 	}
 	return nil, fmt.Errorf("at: pattern must be a hex string or bytes, got %s", pattern.Type())
@@ -344,6 +359,9 @@ func (d *declarer) test(args starlark.Tuple, kwargs []starlark.Tuple) (starlark.
 		"expect?", &expect, "absent?", &absent, "primary?", &primary, "anomalies?", &anomalies); err != nil {
 		return nil, err
 	}
+	if name == "" {
+		return nil, fmt.Errorf("test: name must be non-empty")
+	}
 	t := Test{Name: name, Text: text, FileName: filename, Primary: primary}
 	var err error
 	switch {
@@ -366,6 +384,9 @@ func (d *declarer) test(args starlark.Tuple, kwargs []starlark.Tuple) (starlark.
 	}
 	if t.Anomalies, err = stringList(anomalies); err != nil {
 		return nil, fmt.Errorf("test %q anomalies: %w", name, err)
+	}
+	if len(t.Expect)+len(t.Absent)+len(t.Anomalies) == 0 && t.Primary == "" {
+		return nil, fmt.Errorf("test %q: no expectations (give expect, absent, primary or anomalies)", name)
 	}
 	d.mod.Tests = append(d.mod.Tests, t)
 	return starlark.None, nil

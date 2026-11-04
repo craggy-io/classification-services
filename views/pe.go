@@ -137,9 +137,13 @@ func ParsePE(ra io.ReaderAt, size int64) (*PE, error) {
 			p.Subsystem = le.Uint16(opt[68:])
 			p.SubsystemName = peSubsystems[p.Subsystem]
 		}
+		numDirs := 16
+		if len(opt) >= ddOff {
+			numDirs = int(le.Uint32(opt[ddOff-4:])) // NumberOfRvaAndSizes
+		}
 		dir := func(i int) (uint32, uint32, bool) {
 			o := ddOff + 8*i
-			if len(opt) < o+8 {
+			if i >= numDirs || len(opt) < o+8 {
 				return 0, 0, false
 			}
 			return le.Uint32(opt[o:]), le.Uint32(opt[o+4:]), true

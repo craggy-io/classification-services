@@ -48,6 +48,19 @@ func ParseAPKSigningBlock(ra io.ReaderAt, size int64) (*APKSigningBlock, error) 
 	}
 	le := binary.LittleEndian
 	cdOffset := int64(le.Uint32(rec[16:])) + z.PrependedBytes
+	if le.Uint32(rec[16:]) == 0xffffffff {
+		// ZIP64: the locator (20 bytes) sits immediately before the EOCD
+		// and points at the ZIP64 record, whose cd offset is at +48.
+		loc, err := readExact(ra, size, z.EOCDOffset-20, 20)
+		if err != nil || le.Uint32(loc) != 0x07064b50 {
+			return nil, fmt.Errorf("views: no ZIP64 end-of-central-directory locator")
+		}
+		rec64, err := readExact(ra, size, clampInt64(le.Uint64(loc[8:]))+z.PrependedBytes, 56)
+		if err != nil || le.Uint32(rec64) != 0x06064b50 {
+			return nil, fmt.Errorf("views: no ZIP64 end-of-central-directory record")
+		}
+		cdOffset = clampInt64(le.Uint64(rec64[48:])) + z.PrependedBytes
+	}
 	if cdOffset < 32 {
 		return nil, fmt.Errorf("views: no APK signing block")
 	}

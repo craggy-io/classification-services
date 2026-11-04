@@ -181,10 +181,24 @@ func parseStringPool(c []byte) ([]string, error) {
 		return nil, fmt.Errorf("views: string pool count %d out of range", count)
 	}
 	out := make([]string, count)
+	seen := map[int]string{}
+	totalDecoded := 0
 	for i := 0; i < count; i++ {
 		p := start + int(le.Uint32(c[hsize+i*4:]))
 		if p < 0 || p >= len(c) {
 			continue
+		}
+		if s, ok := seen[p]; ok {
+			out[i] = s
+			continue
+		}
+		record := func(s string) (string, error) {
+			totalDecoded += len(s)
+			if totalDecoded > 4*len(c) {
+				return "", fmt.Errorf("views: string pool decodes to more than 4x its chunk size")
+			}
+			seen[p] = s
+			return s, nil
 		}
 		if utf8 {
 			// utf16 length (1-2 bytes), utf8 length (1-2 bytes), bytes.
@@ -194,7 +208,11 @@ func parseStringPool(c []byte) ([]string, error) {
 			if n1 == 0 || n2 == 0 || s+l > len(c) {
 				continue
 			}
-			out[i] = string(c[s : s+l])
+			v, err := record(string(c[s : s+l]))
+			if err != nil {
+				return nil, err
+			}
+			out[i] = v
 		} else {
 			l, n := axmlLen16(c, p)
 			s := p + n
@@ -205,7 +223,11 @@ func parseStringPool(c []byte) ([]string, error) {
 			for j := range u {
 				u[j] = le.Uint16(c[s+2*j:])
 			}
-			out[i] = string(utf16.Decode(u))
+			v, err := record(string(utf16.Decode(u)))
+			if err != nil {
+				return nil, err
+			}
+			out[i] = v
 		}
 	}
 	return out, nil

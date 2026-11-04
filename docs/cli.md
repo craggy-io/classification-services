@@ -27,7 +27,10 @@ Common flags: `--workdir DIR` (default `$CRAGGY_CLASSIFY_WORKDIR`, else
 or after paths.
 
 Exit status: 0 on success, 1 for errors and failed tests, 2 when an anomaly
-at or above `--fail-on` was reported.
+at or above `--fail-on` was reported. When both an error and such an anomaly
+occur, the exit status is 1 regardless of argument order. `-h`/`--help`
+prints usage and exits 0. A `--` argument ends flag parsing, so files whose
+names look like flags can follow it.
 
 ## Output
 
@@ -42,7 +45,8 @@ data.json: data.json (validated)
 ```
 
 With `--json`, each file is one line:
-`{"path": ..., "result": {...}, "explanation": {...}}`. Children are included
+`{"path": ..., "result": {...}, "explanation": {...}}`; a file that cannot
+be classified is `{"path": ..., "error": ...}`. Children are included
 only with `--tree`. Other commands print their reports (`CheckReport`,
 `PreviewReport`, test results) as JSON objects.
 

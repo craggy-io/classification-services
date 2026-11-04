@@ -73,7 +73,9 @@ func PEM(_ context.Context, in Input) ([]Finding, error) {
 			break
 		}
 		kinds = append(kinds, block.Type)
-		pemF.Children = append(pemF.Children, Derived{Name: fmt.Sprintf("pem[%d] %s", i, block.Type), Data: block.Bytes})
+		if int64(len(block.Bytes)) <= in.Limits().MaxDerivedBytes {
+			pemF.Children = append(pemF.Children, Derived{Name: fmt.Sprintf("pem[%d] %s", i, block.Type), Data: block.Bytes})
+		}
 		switch {
 		case block.Type == "CERTIFICATE":
 			if c, err := x509.ParseCertificate(block.Bytes); err == nil {
@@ -158,8 +160,14 @@ func JWT(_ context.Context, in Input) ([]Finding, error) {
 	if !ok {
 		return nil, nil
 	}
-	if _, err := base64.RawURLEncoding.DecodeString(parts[1]); err != nil {
+	payload, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil || !json.Valid(payload) {
 		return nil, nil
+	}
+	if parts[2] != "" {
+		if _, err := base64.RawURLEncoding.DecodeString(parts[2]); err != nil {
+			return nil, nil
+		}
 	}
 	md := map[string]any{"alg": alg}
 	if typ, ok := hdr["typ"].(string); ok {

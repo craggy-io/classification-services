@@ -44,7 +44,11 @@ func JSON(_ context.Context, in Input) ([]Finding, error) {
 	default:
 		md["kind"] = fmt.Sprintf("%T", v)
 	}
-	return []Finding{Match("data.json", Validated, md)}, nil
+	level := Validated
+	if in.Size() > in.Limits().MaxBytes {
+		level = Recognised // only a prefix was decoded; the tail is unverified
+	}
+	return []Finding{Match("data.json", level, md)}, nil
 }
 
 // XML validates well-formed XML with a single root element. SVG and XML
@@ -64,7 +68,6 @@ func XML(_ context.Context, in Input) ([]Finding, error) {
 	}
 	dec := xml.NewDecoder(strings.NewReader(text))
 	dec.Strict = true
-	dec.Entity = xml.HTMLEntity
 	dec.CharsetReader = func(_ string, r io.Reader) (io.Reader, error) { return r, nil }
 	var root string
 	depth, elements := 0, 0
@@ -81,6 +84,13 @@ func XML(_ context.Context, in Input) ([]Finding, error) {
 			return nil, nil
 		}
 		switch t := tok.(type) {
+		case xml.CharData:
+			if depth == 0 && len(bytes.TrimSpace(t)) > 0 {
+				if root != "" {
+					return []Finding{Reject("data.xml", Validated)}, nil // junk outside the root
+				}
+				return nil, nil
+			}
 		case xml.StartElement:
 			if closed {
 				return []Finding{Reject("data.xml", Validated)}, nil // second root
@@ -100,13 +110,17 @@ func XML(_ context.Context, in Input) ([]Finding, error) {
 	if root == "" || !closed {
 		return nil, nil
 	}
+	level := Validated
+	if int64(len(text)) < in.Size() {
+		level = Recognised // truncated read: bytes past the cap are unverified
+	}
 	md := map[string]any{"root": root, "elements": elements}
-	out := []Finding{Match("data.xml", Validated, md)}
+	out := []Finding{Match("data.xml", level, md)}
 	switch root {
 	case "svg":
-		out = append(out, Match("image.svg", Validated, md))
+		out = append(out, Match("image.svg", level, md))
 	case "plist":
-		out = append(out, Match("data.plist-xml", Validated, md))
+		out = append(out, Match("data.plist-xml", level, md))
 	}
 	return out, nil
 }

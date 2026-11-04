@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
+	"math"
 	"path"
 	"strings"
 )
@@ -129,7 +130,7 @@ func ParseZip(ra io.ReaderAt, size int64) (*Zip, error) {
 	for _, f := range zr.File {
 		e := &ZipEntry{
 			Name: f.Name, IsDir: strings.HasSuffix(f.Name, "/"),
-			Size: int64(f.UncompressedSize64), CompressedSize: int64(f.CompressedSize64),
+			Size: clampInt64(f.UncompressedSize64), CompressedSize: clampInt64(f.CompressedSize64),
 			Method: f.Method, CRC32: f.CRC32, Encrypted: f.Flags&0x1 != 0, file: f,
 		}
 		z.Files = append(z.Files, e)
@@ -149,6 +150,18 @@ func ParseZip(ra io.ReaderAt, size int64) (*Zip, error) {
 	z.layout(ra, size)
 	return z, nil
 }
+
+// clampInt64 converts a ZIP64 size to int64 without wrapping negative.
+func clampInt64(v uint64) int64 {
+	if v > math.MaxInt64 {
+		return math.MaxInt64
+	}
+	return int64(v)
+}
+
+// EscapesRoot reports whether an archive member name is absolute (POSIX or
+// Windows drive/UNC) or escapes the extraction root via ".." segments.
+func EscapesRoot(name string) bool { return escapesRoot(name) }
 
 func escapesRoot(name string) bool {
 	n := strings.ReplaceAll(name, `\`, "/")

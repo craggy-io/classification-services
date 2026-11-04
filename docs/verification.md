@@ -29,7 +29,7 @@ go test ./classify -run xxx -bench .
 | Definitions lifecycle: check, define, persist, remove, failing tests, invalid modules, cache reuse across engines, only-new-classifier reruns, in-flight snapshot stability, refresh across engines, preview, ctx primitives, step limits, WithDefinitions, built-in module tests, batch, directory walk, maintenance | `classify/define_test.go` |
 | Built-in catalogue conventions | `classify/catalogue_test.go` |
 | CLI commands and exit codes | `cmd/craggy-classify/main_test.go` |
-| Golden results for 26 generated files; two engines sharing one workdir concurrently | `integration/corpus_test.go` |
+| Golden results for 34 generated files; two engines sharing one workdir concurrently | `integration/corpus_test.go` |
 | Every file in `samples/` classifies as its README says, and `widgets.star` passes its tests | `integration/samples_test.go` |
 | Adapter: classify an artifact, publish report and typed tables, sql-v1 query, lineage records, idempotent republish, observability bridge | `adapters/artifactsvc/artifactsvc_test.go` |
 
@@ -41,18 +41,13 @@ behaviour changes.
 
 ## Last recorded run
 
-On 2026-11-04, with Go 1.27.3 on linux/amd64 and the dependencies pinned in
-`go.mod` (Starlark `v0.0.0-20261021141710-4f4267fb140d`, artifact-services
-`v0.0.0-20261104150947-32b176f8c2fa`):
+On 2026-11-04, with Go 1.27.3 on windows/amd64 (after the full-repo review
+fixes; an earlier same-day run on linux/amd64 recorded the fuzz and
+benchmark figures below):
 
-- `go build`, `go vet`, `go test` and `go test -race` passed for every package, and for the adapter module.
+- `go build`, `go vet`, `go test` and `go test -race` passed for every package, and `go vet`/`go test` for the adapter module.
 - Fuzzing ran without failures: views 20 s, probes 30 s, classify 45 s, define 20 s.
 - Benchmarks (2 vCPU): warm APK classification 1.9 µs/op (memory cache), cold 12.5 ms/op (fresh workdir: every classifier runs and writes its cache entries), Quick depth 0.21 ms/op.
-
-This run was not on Windows. Windows-specific behaviour (rename over an
-existing definition file, path handling in the stat index) follows the same
-code paths as artifact-services but has not been exercised here. Run
-`go test ./...` on Windows before relying on it.
 
 ## Known limits
 
@@ -61,4 +56,4 @@ code paths as artifact-services but has not been exercised here. Run
 - The compound-file directory walk follows only the FAT sectors listed in the header (the first 109 DIFAT entries), which covers files up to about 7 MiB with 512-byte sectors and far more with 4 KiB sectors.
 - PDF scanning reads at most 32 MiB (and `MaxBytes`) and does not decompress object streams, so names inside compressed streams are not seen.
 - Polyglot detection considers validated direct matches only.
-- A classifier's cache key covers its own identity and the definitions of the types it produces and requires, not the metadata other classifiers attach to those types. Classifiers should decide from content and from whether required types hold; one that branches on another classifier's facet metadata can serve a stale cached answer after that other classifier changes.
+- A native classifier's cache key covers its own identity (including `Spec.Revision`) and the definitions of the types it produces and requires, not the metadata other classifiers attach to those types, so a native classifier that branches on another classifier's facet metadata must bump its `Revision` when that dependency changes. Starlark classifiers are keyed on the whole catalogue and views revisions, since `ctx.has`/`ctx.facet`/`ctx.view` can read anything. Name-visible and facet-set differences are never shared through the flight or the whole-result cache.

@@ -91,37 +91,66 @@ func toBytes(v starlark.Value) ([]byte, error) {
 	return nil, fmt.Errorf("want bytes or string, got %s", v.Type())
 }
 
-// toGo converts a Starlark value to plain Go data for metadata.
-func toGo(v starlark.Value) any {
+// toGo converts a Starlark value to plain Go data for metadata. Cyclic
+// or excessively nested containers (x=[]; x.append(x)) are an error, not
+// a stack overflow.
+func toGo(v starlark.Value) (any, error) {
+	return toGoDepth(v, 0, map[starlark.Value]bool{})
+}
+
+const maxMetadataDepth = 100
+
+func toGoDepth(v starlark.Value, depth int, seen map[starlark.Value]bool) (any, error) {
+	if depth > maxMetadataDepth {
+		return nil, fmt.Errorf("metadata nested deeper than %d levels", maxMetadataDepth)
+	}
 	switch t := v.(type) {
 	case nil, starlark.NoneType:
-		return nil
+		return nil, nil
 	case starlark.Bool:
-		return bool(t)
+		return bool(t), nil
 	case starlark.String:
-		return string(t)
+		return string(t), nil
 	case starlark.Bytes:
-		return string(t)
+		return string(t), nil
 	case starlark.Int:
 		if n, ok := t.Int64(); ok {
-			return n
+			return n, nil
 		}
-		return t.String()
+		return t.String(), nil
 	case starlark.Float:
-		return float64(t)
+		return float64(t), nil
 	case *starlark.List:
+		if seen[t] {
+			return nil, fmt.Errorf("metadata contains a cyclic list")
+		}
+		seen[t] = true
+		defer delete(seen, t)
 		out := make([]any, t.Len())
 		for i := range out {
-			out[i] = toGo(t.Index(i))
+			x, err := toGoDepth(t.Index(i), depth+1, seen)
+			if err != nil {
+				return nil, err
+			}
+			out[i] = x
 		}
-		return out
+		return out, nil
 	case starlark.Tuple:
 		out := make([]any, len(t))
 		for i := range t {
-			out[i] = toGo(t[i])
+			x, err := toGoDepth(t[i], depth+1, seen)
+			if err != nil {
+				return nil, err
+			}
+			out[i] = x
 		}
-		return out
+		return out, nil
 	case *starlark.Dict:
+		if seen[t] {
+			return nil, fmt.Errorf("metadata contains a cyclic dict")
+		}
+		seen[t] = true
+		defer delete(seen, t)
 		out := map[string]any{}
 		for _, kv := range t.Items() {
 			k, ok := kv[0].(starlark.String)
@@ -129,11 +158,15 @@ func toGo(v starlark.Value) any {
 			if !ok {
 				key = kv[0].String()
 			}
-			out[key] = toGo(kv[1])
+			x, err := toGoDepth(kv[1], depth+1, seen)
+			if err != nil {
+				return nil, err
+			}
+			out[key] = x
 		}
-		return out
+		return out, nil
 	}
-	return v.String()
+	return v.String(), nil
 }
 
 // fromGo converts plain Go data (JSON, described views) to Starlark.

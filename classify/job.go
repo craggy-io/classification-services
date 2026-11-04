@@ -58,7 +58,10 @@ const droppedSlot = "\x00dropped"
 func (j *job) run(root *content) *Result {
 	j.nodes = map[string]*Result{}
 	j.rederived = map[string][]derivedChild{}
-	cacheable := j.recurse == nil
+	// A name hint is visible to classifiers via Input.Name(), so a named
+	// root's result is not a function of its digest alone: never serve or
+	// store it via the digest-keyed whole-result caches.
+	cacheable := j.recurse == nil && root.name == ""
 
 	if cacheable {
 		if r := j.e.lruGet(root.digest, j.snap.revision, j.depth, root.text); r != nil {
@@ -86,12 +89,20 @@ func (j *job) run(root *content) *Result {
 	j.pruneDropped(res)
 	j.span.count("nodes", int64(len(j.nodes)))
 
-	if cacheable {
+	if j.recurse == nil {
+		// Fresh child nodes are name-independent (derived contents are
+		// unnamed), so they are stored even for a named root; the named
+		// root itself is excluded below.
 		for _, n := range j.fresh {
+			if n == res && root.name != "" {
+				continue
+			}
 			if subtreeComplete(n) {
 				j.e.storeNode(n, j.snap.revision, j.depth, n == res && root.text)
 			}
 		}
+	}
+	if cacheable && subtreeComplete(res) {
 		j.e.lruPut(root.digest, j.snap.revision, j.depth, root.text, res)
 	}
 	return res
@@ -188,6 +199,36 @@ func (j *job) expandOne(queue *[]pending, p pending) {
 	j.derivedBytes += d.size
 	if j.recurse == nil {
 		if r := j.e.loadNode(d.digest, j.snap.revision, j.depth, false); r != nil {
+			// A cached subtree counts fully against this job's limits and
+			// must not reintroduce an ancestor (cycle).
+			var extraNodes int
+			var extraBytes int64
+			cycle := false
+			_ = r.Walk(func(_ []string, n *Result) error {
+				if p.ancestors[n.Digest] {
+					cycle = true
+				}
+				if n.Digest != d.digest {
+					if _, ok := j.nodes[n.Digest]; !ok {
+						extraNodes++
+						extraBytes += n.Size
+					}
+				}
+				return nil
+			})
+			switch {
+			case cycle:
+				drop(fmt.Sprintf("derived content %q is its own ancestor (cycle)", d.name))
+				return
+			case j.totalNodes+extraNodes > j.limits.MaxNodes:
+				drop(fmt.Sprintf("derived nodes exceed MaxNodes (%d)", j.limits.MaxNodes))
+				return
+			case j.derivedBytes+extraBytes > j.limits.MaxDerivedBytes:
+				drop(fmt.Sprintf("derived bytes exceed MaxDerivedBytes (%d)", j.limits.MaxDerivedBytes))
+				return
+			}
+			j.totalNodes += extraNodes
+			j.derivedBytes += extraBytes
 			slot.Result = r
 			_ = r.Walk(func(_ []string, n *Result) error { j.register(n, false); return nil })
 			return

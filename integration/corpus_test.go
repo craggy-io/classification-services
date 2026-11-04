@@ -57,6 +57,14 @@ func corpus() map[string][]byte {
 		"module.wasm":   []byte("\x00asm\x01\x00\x00\x00"),
 		"encoded.b64":   []byte("eyJ0aGlzIjogImlzIGEgc2VjcmV0IGNvbmZpZyIsICJrZXkiOiAidmFsdWUifQ=="),
 		"compressed.xz": testkit.XZHeader(),
+		"tool.macho":    testkit.MachO(),
+		"lib.a":         testkit.Ar(testkit.File{Name: "member.o", Data: []byte{0x7f, 'E', 'L', 'F'}}),
+		"photo.png":     testkit.PNG(),
+		"app.sqlite":    testkit.SQLite(),
+		"Main.class":    {0xca, 0xfe, 0xba, 0xbe, 0, 0, 0, 52, 0, 1},
+		"key.pem":       []byte("-----BEGIN TEST-----\naGVsbG8=\n-----END TEST-----\n"),
+		"book.xlsx":     testkit.Zip(testkit.File{Name: "[Content_Types].xml", Data: []byte("<Types/>")}, testkit.File{Name: "xl/workbook.xml", Data: []byte("<workbook/>")}),
+		"data.zlib":     testkit.Zlib([]byte("zlib payload\n")),
 		"random.bin":    {0x13, 0x37, 0xde, 0xad, 0xbe, 0xef, 0x00, 0x01},
 	}
 }
@@ -73,20 +81,27 @@ func dexHeader() []byte {
 type summary struct {
 	Primary     string    `json:"primary"`
 	Direct      []string  `json:"direct"`
+	Rejected    []string  `json:"rejected,omitempty"`
+	Complete    bool      `json:"complete"`
 	Anomalies   []string  `json:"anomalies,omitempty"`
 	Children    []summary `json:"children,omitempty"`
 	Name        string    `json:"name,omitempty"`
-	Limitations int       `json:"limitations,omitempty"`
+	Limitations []string  `json:"limitations,omitempty"`
+	Truncated   bool      `json:"truncated,omitempty"` // children exist below the depth cap
 }
 
 func summarise(name string, r *classify.Result, depth int) summary {
-	s := summary{Name: name, Primary: r.Primary, Limitations: len(r.Limitations)}
+	s := summary{Name: name, Primary: r.Primary, Complete: r.Complete, Limitations: append([]string(nil), r.Limitations...)}
 	for _, m := range r.Matches {
 		if m.Direct && m.Type != "bytes" {
 			s.Direct = append(s.Direct, m.Type+"@"+m.Level.String())
 		}
 	}
 	sort.Strings(s.Direct)
+	for _, rej := range r.Rejected {
+		s.Rejected = append(s.Rejected, rej.Type)
+	}
+	sort.Strings(s.Rejected)
 	for _, a := range r.Anomalies {
 		s.Anomalies = append(s.Anomalies, a.Severity.String()+":"+a.Code)
 	}
@@ -94,6 +109,8 @@ func summarise(name string, r *classify.Result, depth int) summary {
 		for _, c := range r.Children {
 			s.Children = append(s.Children, summarise(c.Name, c.Result, depth+1))
 		}
+	} else if len(r.Children) > 0 {
+		s.Truncated = true
 	}
 	return s
 }

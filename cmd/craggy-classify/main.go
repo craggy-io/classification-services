@@ -66,7 +66,16 @@ func defaultWorkdir() string {
 }
 
 // parse accepts flags before, between and after positional arguments.
+// A "--" argument ends flag parsing for good: everything after it is
+// positional, even if it looks like a flag.
 func parse(fs *flag.FlagSet, args []string) ([]string, error) {
+	var tail []string
+	for i, a := range args {
+		if a == "--" {
+			args, tail = args[:i], args[i+1:]
+			break
+		}
+	}
 	var pos []string
 	for {
 		if err := fs.Parse(args); err != nil {
@@ -74,10 +83,7 @@ func parse(fs *flag.FlagSet, args []string) ([]string, error) {
 		}
 		args = fs.Args()
 		if len(args) == 0 {
-			return pos, nil
-		}
-		if args[0] == "--" {
-			return append(pos, args[1:]...), nil
+			return append(pos, tail...), nil
 		}
 		pos = append(pos, args[0])
 		args = args[1:]
@@ -95,6 +101,7 @@ var valueFlags = map[string]bool{"workdir": true, "depth": true, "fail-on": true
 // command finds the subcommand: the first positional argument, when it names
 // one. Flags may precede it.
 func command(args []string) (string, []string) {
+	classifyFlag := false
 	for i := 0; i < len(args); i++ {
 		a := args[i]
 		if a == "--" {
@@ -102,12 +109,23 @@ func command(args []string) (string, []string) {
 		}
 		if strings.HasPrefix(a, "-") {
 			name := strings.TrimLeft(a, "-")
+			if n, _, _ := strings.Cut(name, "="); n == "depth" || n == "fail-on" || n == "explain" || n == "tree" {
+				classifyFlag = true
+			}
 			if valueFlags[name] && !strings.Contains(name, "=") {
 				i++
 			}
 			continue
 		}
 		if commands[a] {
+			// With classify flags before it, an existing file that happens
+			// to be named like a command is a path, not a subcommand.
+			// (Use ./test to classify a file named "test" otherwise.)
+			if classifyFlag {
+				if fi, err := os.Stat(a); err == nil && fi.Mode().IsRegular() {
+					break
+				}
+			}
 			return a, append(append([]string(nil), args[:i]...), args[i+1:]...)
 		}
 		break
@@ -139,7 +157,17 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	}
 	pos, err := parse(fs, args)
 	if err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			return exitOK
+		}
 		return exitError
+	}
+	arity := func(want string, ok bool) bool {
+		if ok {
+			return true
+		}
+		fmt.Fprintf(stderr, "craggy-classify %s: want %s, got %d argument(s)\n", cmd, want, len(pos))
+		return false
 	}
 	e, err := classify.Open(ctx, c.workdir)
 	if err != nil {
@@ -169,6 +197,9 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 		}
 		return classifyPaths(ctx, e, pos, d, threshold, explain, tree, out, stderr)
 	case "types":
+		if !arity("at most one PREFIX", len(pos) <= 1) {
+			return exitError
+		}
 		prefix := ""
 		if len(pos) > 0 {
 			prefix = pos[0]
@@ -180,11 +211,17 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 		}
 		return exitOK
 	case "definitions":
+		if !arity("no arguments", len(pos) == 0) {
+			return exitError
+		}
 		for _, d := range e.Definitions() {
 			out.line(d, map[string]any{"module": d})
 		}
 		return exitOK
 	case "check", "define", "preview":
+		if cmd != "preview" && !arity("exactly one FILE.star", len(pos) == 1) {
+			return exitError
+		}
 		if len(pos) == 0 {
 			fmt.Fprintf(stderr, "craggy-classify %s: missing FILE.star\n", cmd)
 			return exitError
@@ -241,6 +278,9 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 		}
 		return exitOK
 	case "test":
+		if !arity("no arguments", len(pos) == 0) {
+			return exitError
+		}
 		res, err := e.Test(ctx)
 		if err != nil {
 			fmt.Fprintln(stderr, err)
@@ -248,6 +288,9 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 		}
 		return out.tests(res)
 	case "maintain":
+		if !arity("no arguments", len(pos) == 0) {
+			return exitError
+		}
 		rep, err := e.Maintain(ctx)
 		if err != nil {
 			fmt.Fprintln(stderr, err)
@@ -261,16 +304,21 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 }
 
 func classifyPaths(ctx context.Context, e *classify.Engine, paths []string, d classify.Depth, threshold evidence.Severity, explain string, tree bool, out *printer, stderr io.Writer) int {
-	code := exitOK
+	// One documented precedence regardless of order: an error (1) beats
+	// an anomaly at --fail-on (2).
+	sawError, sawAnomaly := false, false
 	report := func(path string, r *classify.Result, err error) error {
 		if err != nil {
 			fmt.Fprintf(stderr, "%s: %v\n", path, err)
-			code = max(code, exitError)
+			if out.json {
+				out.emit(map[string]any{"path": path, "error": err.Error()})
+			}
+			sawError = true
 			return nil
 		}
 		out.result(path, r, explain, tree)
-		if sev, ok := r.MaxSeverity(); ok && sev >= threshold && code == exitOK {
-			code = exitAnomaly
+		if sev, ok := r.MaxSeverity(); ok && sev >= threshold {
+			sawAnomaly = true
 		}
 		return nil
 	}
@@ -304,7 +352,13 @@ func classifyPaths(ctx context.Context, e *classify.Engine, paths []string, d cl
 			report(p, nil, err)
 		}
 	}
-	return code
+	switch {
+	case sawError:
+		return exitError
+	case sawAnomaly:
+		return exitAnomaly
+	}
+	return exitOK
 }
 
 const usage = `usage: craggy-classify [command] [flags] [args]
@@ -325,4 +379,5 @@ common flags:
   --workdir DIR           default $CRAGGY_CLASSIFY_WORKDIR or <user cache>/craggy/classification
   --json                  JSON output, one object per line
 
-exit status: 0 ok, 1 error or failed test, 2 anomaly at or above --fail-on`
+exit status: 0 ok, 1 error or failed test, 2 anomaly at or above --fail-on (1 wins when both occur)
+a file named like a command is classified when written as ./test, or after classify flags`

@@ -98,7 +98,46 @@ func ParseELF(ra io.ReaderAt, size int64) (*ELF, error) {
 		phentsize, phnum = int64(bo.Uint16(hdr[42:])), int64(bo.Uint16(hdr[44:]))
 		shentsize, shnum = int64(bo.Uint16(hdr[46:])), int64(bo.Uint16(hdr[48:]))
 	}
-	if phoff < 0 || shoff < 0 || phnum > maxELFEntries || shnum > maxELFEntries {
+	if phoff < 0 || shoff < 0 {
+		return nil, fmt.Errorf("views: implausible ELF table geometry")
+	}
+	minPhEnt, minShEnt := int64(32), int64(40)
+	if e.Class == 64 {
+		minPhEnt, minShEnt = 56, 64
+	}
+	if phnum > 0 && phentsize < minPhEnt {
+		return nil, fmt.Errorf("views: ELF program header entry size %d below minimum %d", phentsize, minPhEnt)
+	}
+	if shnum > 0 && shentsize < minShEnt {
+		return nil, fmt.Errorf("views: ELF section header entry size %d below minimum %d", shentsize, minShEnt)
+	}
+	// Extended numbering: the real counts overflow the 16-bit header fields
+	// and live in section header 0 (sh_size for sections, sh_info for
+	// program headers when e_phnum == PN_XNUM).
+	if (shnum == 0 && shoff != 0) || phnum == 0xffff {
+		if shoff == 0 || shentsize < minShEnt {
+			return nil, fmt.Errorf("views: ELF extended numbering without a section table")
+		}
+		sh0, err := readExact(ra, size, shoff, min(shentsize, 64))
+		if err != nil {
+			return nil, fmt.Errorf("views: ELF section header 0: %w", err)
+		}
+		if shnum == 0 {
+			if e.Class == 64 {
+				shnum = int64(bo.Uint64(sh0[32:]))
+			} else {
+				shnum = int64(bo.Uint32(sh0[20:]))
+			}
+		}
+		if phnum == 0xffff {
+			if e.Class == 64 {
+				phnum = int64(bo.Uint32(sh0[44:]))
+			} else {
+				phnum = int64(bo.Uint32(sh0[28:]))
+			}
+		}
+	}
+	if phnum > maxELFEntries || shnum > maxELFEntries || phnum < 0 || shnum < 0 {
 		return nil, fmt.Errorf("views: implausible ELF table geometry")
 	}
 	e.ImageEnd = max(ehsize, 52)
@@ -107,7 +146,7 @@ func ParseELF(ra io.ReaderAt, size int64) (*ELF, error) {
 			e.ImageEnd = max(e.ImageEnd, off+n)
 		}
 	}
-	if phnum > 0 && phentsize >= 32 {
+	if phnum > 0 {
 		extend(phoff, phnum*phentsize)
 		for i := int64(0); i < phnum; i++ {
 			ph, err := readExact(ra, size, phoff+i*phentsize, min(phentsize, 56))
@@ -135,7 +174,7 @@ func ParseELF(ra io.ReaderAt, size int64) (*ELF, error) {
 			}
 		}
 	}
-	if shnum > 0 && shentsize >= 40 {
+	if shnum > 0 {
 		extend(shoff, shnum*shentsize)
 		for i := int64(0); i < shnum; i++ {
 			sh, err := readExact(ra, size, shoff+i*shentsize, min(shentsize, 64))

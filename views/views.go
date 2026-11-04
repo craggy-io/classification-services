@@ -18,6 +18,11 @@ import (
 	"sync"
 )
 
+// Revision identifies the view parser implementations. It feeds
+// classifier cache keys (definitions read views), so bump it when a
+// parser's behaviour changes.
+const Revision = "views-v2"
+
 // Parser parses a whole input into a view value.
 type Parser func(ra io.ReaderAt, size int64) (any, error)
 

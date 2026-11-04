@@ -12,6 +12,7 @@ import (
 	"github.com/craggy-io/classification-services/catalog"
 	"github.com/craggy-io/classification-services/definitions"
 	"github.com/craggy-io/classification-services/signatures"
+	"github.com/craggy-io/classification-services/views"
 )
 
 // entry is one classifier in a snapshot: native or Starlark.
@@ -174,8 +175,11 @@ func buildSnapshot(modules map[string]*definitions.Module, natives []Classifier,
 }
 
 // classifierRevision hashes a classifier's identity and the definitions of
-// every type it reads, so editing such a type invalidates its cache entries
-// without touching unrelated classifiers.
+// the types in Produces/Requires, so an unrelated Define does not rerun
+// native classifiers (whose facet reads are covered by their Spec
+// Revision). Starlark classifiers may read facets of arbitrary types
+// (ctx.has/ctx.facet) and any registered view (ctx.view.*), so their
+// revision also covers the whole catalogue and the views revision.
 func classifierRevision(cat *catalog.Catalog, s Spec, identity string) string {
 	h := sha256.New()
 	produces, requires := slices.Clone(s.Produces), slices.Clone(s.Requires)
@@ -183,6 +187,9 @@ func classifierRevision(cat *catalog.Catalog, s Spec, identity string) string {
 	sort.Strings(requires)
 	fmt.Fprintf(h, "id %s\nidentity %s\nproduces %s\nrequires %s\nderives %t\n",
 		s.ID, identity, strings.Join(produces, ","), strings.Join(requires, ","), s.Derives)
+	if strings.HasPrefix(identity, "star:") {
+		fmt.Fprintf(h, "catalog %s\nviews %s\n", cat.Revision(), views.Revision)
+	}
 	reads := append(produces, requires...)
 	sort.Strings(reads)
 	for _, t := range reads {

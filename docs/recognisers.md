@@ -77,6 +77,7 @@ not `Message`.
 | `android.v1-signature-only` | info | Signed only with the JAR scheme. |
 | `android.manifest-unparsed` | info | `AndroidManifest.xml` is not valid binary XML. |
 | `document.macros` | warning | An OOXML `vbaProject.bin` or OLE2 VBA storage is present. |
+| `cfb.directory-truncated` | warning | The compound file directory chain could not be followed to its end, so entries (including a VBA storage) may be missing. |
 | `pdf.javascript`, `pdf.auto-action`, `pdf.embedded-file` | warning | `/JavaScript` or `/JS`; `/OpenAction` or `/AA`; `/EmbeddedFile`. |
 | `pdf.launch`, `pdf.obfuscated-name` | critical | `/Launch`; security-relevant names hidden with `#xx` escapes. |
 | `pdf.leading-data` | warning | Data precedes `%PDF-`. |

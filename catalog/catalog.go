@@ -49,6 +49,7 @@ func (t TypeInfo) Normalize() TypeInfo {
 			parents = append(parents, p)
 		}
 	}
+	sort.Strings(parents)
 	t.Parents = parents
 	var ext []string
 	for _, e := range t.Ext {
@@ -57,6 +58,7 @@ func (t TypeInfo) Normalize() TypeInfo {
 			ext = append(ext, e)
 		}
 	}
+	sort.Strings(ext)
 	t.Ext = ext
 	return t
 }
@@ -68,8 +70,26 @@ func (t TypeInfo) clone() TypeInfo {
 }
 
 func (t TypeInfo) fingerprint() string {
-	return fmt.Sprintf("%s|%s|%s|%s|%d|%t", t.Name, strings.Join(t.Parents, ","),
-		t.MIME, strings.Join(t.Ext, ","), t.Priority, t.Abstract)
+	// Length-prefix every variable field so different definitions cannot
+	// collide through delimiter-bearing values (Ext ["p,q"] vs ["p","q"]).
+	field := func(s string) string { return fmt.Sprintf("%d:%s", len(s), s) }
+	var b strings.Builder
+	for _, s := range []string{t.Name, t.MIME, t.Description} {
+		b.WriteString(field(s))
+		b.WriteByte('|')
+	}
+	fmt.Fprintf(&b, "parents%d|", len(t.Parents))
+	for _, s := range t.Parents {
+		b.WriteString(field(s))
+		b.WriteByte('|')
+	}
+	fmt.Fprintf(&b, "ext%d|", len(t.Ext))
+	for _, s := range t.Ext {
+		b.WriteString(field(s))
+		b.WriteByte('|')
+	}
+	fmt.Fprintf(&b, "%d|%t", t.Priority, t.Abstract)
+	return b.String()
 }
 
 // Namespace returns the part of name before the first dot, or "" for a
@@ -106,6 +126,9 @@ func Build(infos []TypeInfo) (*Catalog, error) {
 		}
 		if !validName(ti.Name) {
 			return nil, fmt.Errorf("catalog: invalid type name %q (want lower-case namespace.name)", ti.Name)
+		}
+		if !strings.Contains(ti.Name, ".") && !ti.Abstract && ti.Name != Bytes && ti.Name != Text {
+			return nil, fmt.Errorf("catalog: concrete type %q must be namespace.name (single labels are abstract namespaces)", ti.Name)
 		}
 		if prev, ok := c.types[ti.Name]; ok {
 			if prev.fingerprint() != ti.fingerprint() {
@@ -229,9 +252,13 @@ func (c *Catalog) Get(name string) (TypeInfo, bool) {
 	return ti.clone(), ok
 }
 
-// IsA reports whether child is parent or one of its descendants.
+// IsA reports whether child is parent or one of its descendants. An
+// undeclared type is not anything, not even itself.
 func (c *Catalog) IsA(child, parent string) bool {
-	return child == parent || c.ancestors[child][parent]
+	if child == parent {
+		return c.Has(child)
+	}
+	return c.ancestors[child][parent]
 }
 
 // Ancestors returns name's ancestors (excluding name), sorted.
