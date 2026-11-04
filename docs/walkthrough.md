@@ -4,7 +4,10 @@
 
 This walkthrough classifies some files, explains a result, then writes, checks,
 previews and installs a definition. It uses the CLI; every step has a direct
-Go equivalent, noted alongside. The outputs below are from a real run. The
+Go equivalent, noted alongside. The outputs below are from a real run. To
+follow along, use the files in [`samples/`](../samples/README.md): `slip.zip`,
+`current.wdg`, `legacy.wdg` and `widgets.star` (the module is called `acme`
+below). The
 same flows are exercised by `ExampleEngine_Classify`, the `classify` tests and
 the CLI test.
 

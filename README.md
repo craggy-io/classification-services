@@ -68,12 +68,13 @@ for _, c := range r.Children { ... }        // classes.dex -> android.dex
 ```
 
 ```sh
-craggy-classify --tree --fail-on critical ./samples
-craggy-classify check widgets.star && craggy-classify define widgets.star
+craggy-classify --tree --fail-on critical samples
+craggy-classify check samples/widgets.star && craggy-classify define samples/widgets.star
 ```
 
-Start with the [documentation index](docs/README.md) or the
-[walkthrough](docs/walkthrough.md). Coming from cclab-classify? See
+Start with the [documentation index](docs/README.md), the
+[walkthrough](docs/walkthrough.md), or the example files in
+[samples](samples/README.md). Coming from cclab-classify? See
 [migration](docs/migration.md).
 
 For coding-agent integration and repository development guidance, see [AGENTS.md](AGENTS.md).
