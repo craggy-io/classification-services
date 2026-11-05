@@ -3,6 +3,7 @@ package classify_test
 import (
 	"context"
 	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"slices"
@@ -12,6 +13,9 @@ import (
 	"testing"
 	"testing/fstest"
 	"time"
+
+	"github.com/craggy-io/foundation-kit/bundle"
+	"github.com/craggy-io/foundation-kit/bundle/bundletest"
 
 	"github.com/craggy-io/classification-services/classify"
 	"github.com/craggy-io/classification-services/internal/testkit"
@@ -298,15 +302,88 @@ classifier("bad", run = _bad)
 	}
 }
 
-func TestWithDefinitionsFS(t *testing.T) {
-	fsys := fstest.MapFS{"acme/widget.star": {Data: []byte(widgetDef)}}
-	e := open(t, classify.WithDefinitions(fsys))
-	if !classifyOK(t, e, classify.Text("WIDGET: 1")).Is("acme.widget") {
-		t.Fatal("WithDefinitions module not loaded")
+func widgetBundle(id, module string) fstest.MapFS {
+	return fstest.MapFS{
+		"bundle.yaml":      {Data: []byte("apiVersion: craggy.io/bundle/v1\nmetadata: {id: " + id + ", version: 1.0.0}\ncontributions:\n  - {id: " + module + ", kind: classify.module@1, path: acme/widget.star}\n")},
+		"acme/widget.star": {Data: []byte(widgetDef)},
+		"acme/notes.star":  {Data: []byte("def (")}, // not in bundle.yaml, so never loaded
 	}
-	e2 := open(t, classify.WithoutBuiltins(), classify.WithDefinitions(fsys))
+}
+
+func TestWithSources(t *testing.T) {
+	src := bundle.Embedded("acme", widgetBundle("acme.defs", "acme"))
+	e := open(t, classify.WithSources(src))
+	if !classifyOK(t, e, classify.Text("WIDGET: 1")).Is("acme.widget") {
+		t.Fatal("WithSources module not loaded")
+	}
+	e2 := open(t, classify.WithoutBuiltins(), classify.WithSources(src))
 	if n := len(e2.Types()); n != 4 { // bytes, text, acme, acme.widget
 		t.Fatalf("WithoutBuiltins types = %d", n)
+	}
+	if err := e.Remove(context.Background(), "acme"); err == nil || !strings.Contains(err.Error(), "acme.defs") {
+		t.Fatalf("removing a WithSources module: %v", err)
+	}
+
+	// No override applies to WithSources bundles: a built-in's name clashes.
+	clash := bundle.Embedded("clash", widgetBundle("acme.clash", "java-archives"))
+	_, err := classify.Open(context.Background(), t.TempDir(), classify.WithSources(clash))
+	bundletest.RequireCode(t, err, bundle.CodeIDConflict)
+
+	// So does a module installed with Define of a WithSources module's name.
+	if _, err := e.Define(context.Background(), "acme", []byte(widgetDef)); err == nil {
+		t.Fatal("Define replaced a WithSources module")
+	}
+}
+
+func TestInstalledBundleOnDisk(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	e, err := classify.Open(ctx, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.Define(ctx, "acme", []byte(widgetDef)); err != nil {
+		t.Fatal(err)
+	}
+	// Replacing a built-in on purpose: the installed bundle overrides it.
+	hasJar := func() bool {
+		return slices.ContainsFunc(e.Classifiers(), func(s classify.Spec) bool { return s.ID == "jar" })
+	}
+	if _, err := e.Define(ctx, "java-archives", []byte(`"""No Java classifiers."""`)); err != nil {
+		t.Fatal(err)
+	}
+	if hasJar() {
+		t.Fatal("built-in java-archives still active after replacing it")
+	}
+	inst := filepath.Join(dir, "definitions", classify.InstalledBundle)
+	manifest, err := os.ReadFile(filepath.Join(inst, "bundle.yaml"))
+	if err != nil || !strings.Contains(string(manifest), `id: "acme"`) || !strings.Contains(string(manifest), `path: "java-archives.star"`) {
+		t.Fatalf("installed bundle.yaml = %s, %v", manifest, err)
+	}
+	if b, err := os.ReadFile(filepath.Join(inst, "acme.star")); err != nil || string(b) != widgetDef {
+		t.Fatalf("installed acme.star = %v", err)
+	}
+
+	if err := e.Remove(ctx, "java-archives"); err != nil {
+		t.Fatal(err)
+	}
+	if !hasJar() {
+		t.Fatal("Remove did not restore the built-in")
+	}
+	if err := e.Remove(ctx, "acme"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(inst); !errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("removing the last module left %s: %v", inst, err)
+	}
+
+	// A folder there without a bundle.yaml is an error, never a guess.
+	if err := os.MkdirAll(inst, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	os.WriteFile(filepath.Join(inst, "acme.star"), []byte(widgetDef), 0o644)
+	if _, err := classify.Open(ctx, dir); err == nil || !strings.Contains(err.Error(), "no bundle.yaml") {
+		t.Fatalf("Open with a manifest-less installed folder: %v", err)
 	}
 }
 
@@ -377,5 +454,37 @@ func TestClassifyManyDirAndMaintain(t *testing.T) {
 	// Results must still be correct afterwards.
 	if classifyOK(t, e, classify.File(filepath.Join(dir, "a.json"))).Primary != "data.json" {
 		t.Fatal("classification broken after Maintain")
+	}
+}
+
+func TestDefineModulesInstallsTogetherOrNotAtAll(t *testing.T) {
+	ctx := context.Background()
+	e := open(t)
+	types := classify.ModuleSource{Name: "acme-types", Source: []byte("type(\"acme\", abstract = True)\ntype(\"acme.widget\", parents = [\"acme\", \"text\"])\n")}
+	rules := classify.ModuleSource{Name: "acme-rules", Source: []byte(`signature("acme.widget", at(0, b"WIDGET:"))
+test("widget", data = "WIDGET: 1", expect = ["acme.widget"])
+`)}
+	// Alone, the rules module refers to a type it doesn't declare.
+	if _, err := e.Check(ctx, rules.Name, rules.Source); err == nil {
+		t.Fatal("rules checked without their types")
+	}
+	failing := classify.ModuleSource{Name: "acme-rules", Source: append(rules.Source, []byte(`test("bad", data = "x", expect = ["acme.widget"])`+"\n")...)}
+	reps, err := e.DefineModules(ctx, types, failing)
+	var ce *classify.CheckError
+	if !errors.As(err, &ce) || len(ce.Reports) != 2 || !ce.Reports[0].Passed() || ce.Reports[1].Passed() {
+		t.Fatalf("failing DefineModules = %v", err)
+	}
+	if slices.Contains(e.Definitions(), "acme-types") {
+		t.Fatal("a module was installed although another failed its tests")
+	}
+	reps, err = e.DefineModules(ctx, types, rules)
+	if err != nil || len(reps) != 2 || !slices.Equal(reps[0].AddedTypes, []string{"acme", "acme.widget"}) || len(reps[1].AddedTypes) != 0 {
+		t.Fatalf("DefineModules = %+v, %v", reps, err)
+	}
+	if !classifyOK(t, e, classify.Text("WIDGET: 2")).Is("acme.widget") {
+		t.Fatal("modules not installed")
+	}
+	if _, err := e.DefineModules(ctx, types, types); err == nil {
+		t.Fatal("duplicate module accepted")
 	}
 }

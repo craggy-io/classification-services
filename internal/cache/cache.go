@@ -1,12 +1,13 @@
 // Package cache owns the workdir layout:
 //
 //	<workdir>/
-//	  definitions/                    runtime-defined modules (<name>.star)
+//	  definitions/classify.installed/ the bundle Define installs into
+//	    bundle.yaml                   its manifest, rewritten by Define/Remove
+//	    <name>.star                   one module per Define
 //	  cache/stat/                     (abs path, size, mtime) -> digest
 //	  cache/results/<ab>/<digest>/    one immutable file per cache key
 //	    <classifier>@<rev>.json       a classifier's output for that content
 //	    node@<profile>.json           a whole classification result
-//	  cache/compiled/<srchash>.bin    compiled Starlark programs
 //	  spool/                          large derived children, deleted after use
 //
 // Every entry is written to a temp file and renamed into place, and entries
@@ -43,7 +44,7 @@ func Open(root string) (*Store, error) {
 		return nil, fmt.Errorf("cache: resolving workdir: %w", err)
 	}
 	s := &Store{root: abs}
-	for _, d := range []string{s.DefinitionsDir(), s.dir("stat"), s.dir("results"), s.dir("compiled"), s.SpoolDir()} {
+	for _, d := range []string{s.DefinitionsDir(), s.dir("stat"), s.dir("results"), s.SpoolDir()} {
 		if err := os.MkdirAll(d, 0o755); err != nil {
 			return nil, fmt.Errorf("cache: creating workdir: %w", err)
 		}
@@ -54,7 +55,8 @@ func Open(root string) (*Store, error) {
 // Root is the absolute workdir.
 func (s *Store) Root() string { return s.root }
 
-// DefinitionsDir holds runtime-defined modules.
+// DefinitionsDir is the install folder for bundle.Live: it holds the
+// bundle of runtime-defined modules.
 func (s *Store) DefinitionsDir() string { return filepath.Join(s.root, "definitions") }
 
 // SpoolDir holds temporary files for large derived children.
@@ -102,17 +104,6 @@ func (s *Store) Read(digest, file string) ([]byte, bool) {
 // Write stores an immutable entry for digest.
 func (s *Store) Write(digest, file string, data []byte) error {
 	return WriteImmutable(filepath.Join(s.resultDir(digest), file), data)
-}
-
-// Program returns a compiled program by source hash.
-func (s *Store) Program(hash string) ([]byte, bool) {
-	b, err := os.ReadFile(filepath.Join(s.dir("compiled"), SafeName(hash)+".bin"))
-	return b, err == nil
-}
-
-// PutProgram stores a compiled program.
-func (s *Store) PutProgram(hash string, data []byte) {
-	_ = WriteImmutable(filepath.Join(s.dir("compiled"), SafeName(hash)+".bin"), data)
 }
 
 // --- stat index ---
@@ -187,18 +178,16 @@ func (s *Store) KnownFiles(limit int) []KnownFile {
 
 // Report summarises one maintenance pass.
 type Report struct {
-	ResultsRemoved  int `json:"results_removed"`
-	ResultsKept     int `json:"results_kept"`
-	ProgramsRemoved int `json:"programs_removed"`
-	StatRemoved     int `json:"stat_removed"`
-	SpoolRemoved    int `json:"spool_removed"`
-	TempRemoved     int `json:"temp_removed"`
+	ResultsRemoved int `json:"results_removed"`
+	ResultsKept    int `json:"results_kept"`
+	StatRemoved    int `json:"stat_removed"`
+	SpoolRemoved   int `json:"spool_removed"`
+	TempRemoved    int `json:"temp_removed"`
 }
 
 // Policy says which entries a maintenance pass keeps.
 type Policy struct {
-	KeepResult  func(file string) bool // file is an entry name (ClassifierFile/NodeFile)
-	KeepProgram func(hash string) bool
+	KeepResult func(file string) bool // file is an entry name (ClassifierFile/NodeFile)
 	// StaleAfter is the age beyond which spool and temp files are orphaned
 	// leftovers of an interrupted process. Zero selects one hour.
 	StaleAfter time.Duration
@@ -243,16 +232,6 @@ func (s *Store) Maintain(p Policy) (Report, error) {
 		return rep, err
 	}
 	removeEmptyDirs(s.dir("results"))
-	if p.KeepProgram != nil {
-		if ents, err := os.ReadDir(s.dir("compiled")); err == nil {
-			for _, e := range ents {
-				hash := strings.TrimSuffix(e.Name(), ".bin")
-				if !e.IsDir() && !p.KeepProgram(hash) && os.Remove(filepath.Join(s.dir("compiled"), e.Name())) == nil {
-					rep.ProgramsRemoved++
-				}
-			}
-		}
-	}
 	if ents, err := os.ReadDir(s.dir("stat")); err == nil {
 		for _, ent := range ents {
 			path := filepath.Join(s.dir("stat"), ent.Name())

@@ -35,8 +35,19 @@ func TestCLI(t *testing.T) {
 		t.Fatalf("json: code=%d %s", code, out)
 	}
 
-	def := filepath.Join(dir, "acme.star")
-	os.WriteFile(def, []byte(`type("acme", abstract = True)
+	def := filepath.Join(t.TempDir(), "acme-bundle")
+	os.MkdirAll(filepath.Join(def, "modules"), 0o755)
+	os.WriteFile(filepath.Join(def, "bundle.yaml"), []byte(`apiVersion: craggy.io/bundle/v1
+metadata: {id: test.acme, version: 1.0.0}
+contributions:
+  - {id: acme, kind: classify.module@1, path: modules/thing.star}
+  - {id: acme-extra, kind: classify.module@1, path: modules/extra.star}
+`), 0o644)
+	os.WriteFile(filepath.Join(def, "modules", "extra.star"), []byte(`type("other", abstract = True)
+type("other.thing", parents = ["other", "text"])
+test("other", data = "x", absent = ["other.thing"])
+`), 0o644)
+	os.WriteFile(filepath.Join(def, "modules", "thing.star"), []byte(`type("acme", abstract = True)
 type("acme.thing", parents = ["acme", "data.json"])
 def _t(ctx):
     if "thing" in ctx.json():
@@ -52,10 +63,20 @@ test("thing", data = '{"thing": 1}', primary = "acme.thing")
 	if code, out, _ := cli(t, wd, "preview", def); code != exitOK || !strings.Contains(out, "t.json: data.json -> acme.thing") {
 		t.Fatalf("preview: %d %s", code, out)
 	}
+	// #ID picks one module; without it every module is used.
+	if code, out, errs := cli(t, wd, "check", def+"#acme-extra"); code != exitOK || !strings.Contains(out, "acme-extra:") || strings.Contains(out, "acme:") {
+		t.Fatalf("check #acme-extra: %d %s %s", code, out, errs)
+	}
+	if code, _, errs := cli(t, wd, "check", def+"#nope"); code != exitError || !strings.Contains(errs, `contribution "nope"`) {
+		t.Fatalf("check #nope: %d %s", code, errs)
+	}
+	if code, _, errs := cli(t, wd, "check", filepath.Join(def, "modules")); code != exitError || !strings.Contains(errs, "bundle.yaml") {
+		t.Fatalf("check without bundle.yaml: %d %s", code, errs)
+	}
 	if code, _, errs := cli(t, wd, "define", def); code != exitOK {
 		t.Fatalf("define: %s", errs)
 	}
-	if _, out, _ := cli(t, wd, "definitions"); !strings.Contains(out, "acme") {
+	if _, out, _ := cli(t, wd, "definitions"); !strings.Contains(out, "acme\n") || !strings.Contains(out, "acme-extra") {
 		t.Fatalf("definitions: %s", out)
 	}
 	if _, out, _ := cli(t, wd, "types", "acme"); !strings.Contains(out, "acme.thing") {
@@ -63,6 +84,9 @@ test("thing", data = '{"thing": 1}', primary = "acme.thing")
 	}
 	if code, out, _ := cli(t, wd, "test"); code != exitOK || !strings.Contains(out, "ok   acme / thing") {
 		t.Fatalf("test: %d %s", code, out)
+	}
+	if code, _, _ := cli(t, wd, "remove", "acme-extra"); code != exitOK {
+		t.Fatal("remove failed")
 	}
 	if code, _, _ := cli(t, wd, "remove", "acme"); code != exitOK {
 		t.Fatal("remove failed")

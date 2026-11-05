@@ -36,8 +36,37 @@ test("legacy", data = "WIDGET: 0\n", anomalies = ["acme.legacy"])
 test("gadget", data = "GADGET: 2\n", absent = ["acme.widget"])
 ```
 
-The module name is the file name without `.star`: lower-case letters,
-digits, `_`, `.` and `-`. A leading docstring becomes `CheckReport.Doc`.
+A leading docstring becomes `CheckReport.Doc`.
+
+## Bundles
+
+Modules are loaded from bundles only (foundation-kit's
+[`bundle`](https://github.com/craggy-io/foundation-kit/blob/main/bundle/README.md)).
+A bundle is a folder, or embedded file system, with a `bundle.yaml` at its
+root that lists every module. **A folder without a `bundle.yaml` is not
+loaded**, and a `.star` file the manifest doesn't list is ignored: nothing is
+discovered from the folder layout or file names.
+
+```yaml
+apiVersion: craggy.io/bundle/v1
+metadata:
+  id: acme.definitions
+  version: 1.0.0
+contributions:
+  - id: acme                  # the module name
+    kind: classify.module@1
+    path: modules/widgets.star
+  - id: acme-signatures       # optional: a CyberChef-format JSON signature set
+    kind: classify.cyberchef@1
+    path: signatures/acme.json
+```
+
+- **Module name:** the contribution `id`, not the file name. It must be lower-case letters, digits, `_`, `.` and `-`, starting and ending with a letter or digit.
+- **Kinds:** `classify.module@1` (`definitions.ModuleKind`, compiled by `definitions.Compile`) and `classify.cyberchef@1` (`signatures.CyberChefKind`, compiled by `signatures.CompileCyberChef`, which keeps `ParseCyberChef`'s lenient parsing). Both are global: a name is unique across every loaded bundle, and a clash is a `bundle.id_conflict` error.
+- **Errors** are bundle diagnostics with the file and line (code `classify.module_invalid` or `classify.cyberchef_invalid`), and every problem in every bundle is reported at once.
+- **Built-ins:** `defs/` is the bundle `classify.builtin`, embedded. Add a new built-in module to `defs/bundle.yaml` as well as to its folder.
+- **Shipped by an importer:** pass bundles to `classify.Open` with `WithSources(bundle.Dir(path))` or `bundle.Embedded(name, fsys)`. They have no override over the built-ins, so they can't reuse a built-in's name.
+- **Installed at run time:** `Define` keeps every runtime module in one bundle, `classify.installed`, at `workdir/definitions/classify.installed/`. It overrides the built-ins, so defining a built-in's name replaces it on purpose.
 
 ## Declarations
 
@@ -88,16 +117,24 @@ reads go through the node's read budget.
 ```go
 rep, err := e.Check(ctx, "acme", src)          // compile, validate, run tests; installs nothing
 prev, err := e.Preview(ctx, "acme", src)       // + diff classifications of known files
-rep, err = e.Define(ctx, "acme", src)          // + persist and swap in, only if tests pass
-err = e.Remove(ctx, "acme")                    // uninstall (restores a shadowed built-in)
-changed, err := e.Refresh(ctx)                 // pick up other processes' changes
+rep, err = e.Define(ctx, "acme", src)          // + install into the workdir bundle, only if tests pass
+err = e.Remove(ctx, "acme")                    // uninstall (restores a replaced built-in)
+changed, err := e.Refresh(ctx)                 // reload bundles: other processes' changes
 results, err := e.Test(ctx)                    // run every installed module's tests
 ```
 
-- **Validation** (all of `Check`, `Preview` and `Define`): the module compiles; every type it references exists in the resulting catalogue; the catalogue stays acyclic and namespace-consistent; classifier IDs are unique; signatures reference known types.
-- **`CheckReport`** lists added, changed and removed types, the module's classifiers, its signature count, and each test's outcome (primary, types, anomalies, failures).
-- **`Define`** returns a `*CheckError` carrying the report when any test fails, and installs nothing. Otherwise it writes `workdir/definitions/<name>.star` atomically and swaps the snapshot; calls in flight keep theirs. Re-defining a name replaces it; defining a built-in's name shadows the built-in.
-- **`Preview`** classifies each given source, or with none up to `PreviewLimit` (500) files the engine has classified before that are unchanged on disk, under the current and the candidate snapshot. It returns the changes: primary before/after, added and removed types and anomaly codes.
+`CheckModules`, `PreviewModules` and `DefineModules` take several
+`ModuleSource{Name, Source}` values and treat them as one change: they are
+validated and tested together, so they may use each other's types, and
+`DefineModules` installs all of them in one `Live.Install` or none. The
+single-module methods call them with one module. The CLI's `check`,
+`preview` and `define` load a bundle and pass its modules this way.
+
+- **Validation** (all of `Check`, `Preview` and `Define`): the candidate installed bundle loads through `bundle.Load` like any other (so a name clash with a `WithSources` module is rejected); the module compiles; every type it references exists in the resulting catalogue; the catalogue stays acyclic and namespace-consistent; classifier IDs are unique; signatures reference known types.
+- **`CheckReport`** lists added, changed and removed types (with several modules, each type under the module that declares it), the module's classifiers, its signature count, and each test's outcome (primary, types, anomalies, failures).
+- **`Define`** returns a `*CheckError` carrying every module's report (`Reports`) when any test fails, and installs nothing. Otherwise it rewrites the installed bundle (`<name>.star` plus its entry in that bundle's `bundle.yaml`) and installs it with `bundle.Live.Install`, which validates the reload and rolls back on failure, then swaps the snapshot; calls in flight keep theirs. Re-defining a name replaces it; defining a built-in's name replaces the built-in. If another process changes the installed bundle while the tests run, `Define` starts again on the new state (up to three times). There is no lock between processes, so two `Define` calls racing in the instant before installing can still lose one module.
+- **`Remove`** rewrites the installed bundle without the module, or uninstalls the bundle when it was the last one. Modules from `classify.builtin` or a `WithSources` bundle can't be removed.
+- **`Preview`** returns a report per module in `PreviewReport.Checks`, and classifies each given source, or with none up to `PreviewLimit` (500) files the engine has classified before that are unchanged on disk, under the current and the candidate snapshot. It returns the changes: primary before/after, added and removed types and anomaly codes.
 
 Cached results are keyed by classifier revision, so after `Define` only the
 new or changed classifiers run on content already seen.

@@ -34,16 +34,21 @@ e, err := classify.Open(ctx, workdir,
 defer e.Close()
 ```
 
-`workdir` is required and is created if missing ([cache](cache.md)). Options:
+`workdir` is required and is created if missing ([cache](cache.md)). `Open`
+loads every definition bundle through foundation-kit's `bundle.Live`: the
+embedded built-ins (`classify.builtin`), any `WithSources` bundles, and the
+bundle `Define` installs into (`classify.installed`, under the workdir), which
+overrides the built-ins. A load error is a `*bundle.LoadError` listing every
+problem with its file and line. Options:
 
 | Option | Effect |
 | --- | --- |
 | `WithoutBuiltins()` | Omit the built-in catalogue, signatures and classifiers (the roots `bytes` and `text` remain). |
-| `WithDefinitions(fs.FS)` | Load extra `*.star` modules shipped by an importer. |
+| `WithSources(...bundle.Source)` | Load extra definition bundles shipped by an importer, such as `bundle.Dir(path)`. Each needs its own `bundle.yaml` ([bundles](definitions.md#bundles)); a module name another bundle already uses is a `bundle.id_conflict` error. |
 | `WithClassifier(Classifier)` | Register a native Go classifier. |
 | `WithLimits(Limits)` | Work limits (below). |
 | `WithObserver(Observer)` | Receive events for every operation. |
-| `WithAutoRefresh(interval)` | Pick up definitions other processes installed, checking at most once per interval. |
+| `WithAutoRefresh(interval)` | Pick up definitions other processes installed, reloading the bundles at most once per interval. |
 
 `Close` is idempotent; afterwards operations return `ErrClosed`. The workdir
 is kept.

@@ -15,12 +15,13 @@ engines and processes.
 
 ```
 <workdir>/
-  definitions/<name>.star          runtime-defined modules (Define / Remove)
+  definitions/classify.installed/   the bundle Define / Remove rewrite
+    bundle.yaml                    its manifest, listing every installed module
+    <name>.star                    one runtime-defined module
   cache/stat/                      (absolute path, size, mtime) -> digest
   cache/results/<ab>/<digest>/
     <classifier>@c1-<rev>.json     one classifier's output for that content
     node@c1-<snapshot>-<depth>-<text>.json   a whole result DAG
-  cache/compiled/<srchash>.bin     compiled Starlark programs
   spool/                           large derived children during a call
 ```
 
@@ -44,8 +45,14 @@ Every entry is written to a temporary file and renamed into place, and is
 immutable once written. Two processes sharing a workdir can at worst
 duplicate work. There is no lock file and no database. Within a process,
 concurrent runs of the same classifier on the same content share one
-execution. Definitions are replaced atomically; another engine sees them
-after `Refresh` (or automatically with `WithAutoRefresh`).
+execution. Definitions are replaced atomically by `bundle.Live.Install`; another
+engine sees them after `Refresh` (or automatically with `WithAutoRefresh`),
+which reloads the bundles. Compiled modules are kept only in memory: a
+reload reuses the compiled value of every bundle whose content is unchanged,
+so there is no on-disk program cache. Older workdirs may still hold a
+`cache/compiled/` folder or loose `definitions/<name>.star` files; neither is
+read any more, so delete them, and re-`Define` the modules (the bundle needs
+its `bundle.yaml`).
 
 Failed, cancelled, step-limited and budget-limited runs are not cached.
 
@@ -60,7 +67,6 @@ decodes are memoised per node, and a panicking view parser becomes an error.
 `Engine.Maintain(ctx)` (CLI: `craggy-classify maintain`) removes:
 
 - result entries that no classifier or snapshot in the current engine can produce;
-- compiled programs for modules no longer loaded;
 - stat entries for files that changed or vanished;
 - spool and temporary files older than an hour.
 

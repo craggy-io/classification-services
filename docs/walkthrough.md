@@ -6,8 +6,8 @@ This walkthrough classifies some files, explains a result, then writes, checks,
 previews and installs a definition. It uses the CLI; every step has a direct
 Go equivalent, noted alongside. The outputs below are from a real run. To
 follow along, use the files in [`samples/`](../samples/README.md): `slip.zip`,
-`current.wdg`, `legacy.wdg` and `widgets.star` (the module is called `acme`
-below). The
+`current.wdg`, `legacy.wdg` and the definitions bundle `widgets/` (written
+as `acme/` below; its module is called `acme`). The
 same flows are exercised by `ExampleEngine_Classify`, the `classify` tests and
 the CLI test.
 
@@ -43,28 +43,39 @@ slip.zip: archive.zip (validated)
 
 ## 3. Write a definition
 
-`acme.star` is the module from [Definitions](definitions.md): a type, a
+`acme/acme.star` is the module from [Definitions](definitions.md): a type, a
 signature, a classifier that validates the header and reports an anomaly for
-version 0, and three inline tests.
+version 0, and three inline tests. The CLI only takes bundles, so it sits in a
+folder with a `bundle.yaml` that names the module:
+
+```yaml
+apiVersion: craggy.io/bundle/v1
+metadata: {id: acme.widgets, version: 1.0.0}
+contributions:
+  - {id: acme, kind: classify.module@1, path: acme.star}
+```
+
+The module's name is the contribution `id`, `acme`, not the file name.
 
 ## 4. Check
 
 ```sh
-$ craggy-classify check acme.star
+$ craggy-classify check acme
 acme: adds 2 types, 1 classifiers, 1 signatures
   ok   widget (primary acme.widget)
   ok   legacy (primary acme.widget)
   ok   gadget (primary text)
 ```
 
-(`Engine.Check`.) The module compiled, its types fit the catalogue, and the
+(`Engine.Check`; the CLI loads the bundle with `bundle.Load` and calls
+`Engine.CheckModules` with every module in it, or just `acme#acme`'s.) The module compiled, its types fit the catalogue, and the
 tests passed against the snapshot that installing it would produce. Nothing
 was installed.
 
 ## 5. Preview
 
 ```sh
-$ craggy-classify preview acme.star
+$ craggy-classify preview acme
 ...
 examined 4 files, 2 would change
   /tmp/wt/a.wdg: text -> acme.widget  +acme +acme.widget
@@ -79,7 +90,7 @@ definition before installing it.
 ## 6. Define, and classify again
 
 ```sh
-$ craggy-classify define acme.star
+$ craggy-classify define acme
 $ craggy-classify --explain acme.widget old.wdg
 old.wdg: acme.widget (validated)
   also: text
@@ -89,8 +100,9 @@ old.wdg: acme.widget (validated)
     candidate: signature acme:magic matched 7 bytes at offset 0
 ```
 
-(`Engine.Define`.) The module is persisted as `/tmp/wd/definitions/acme.star`
-and swapped in atomically. On the second classification only the new
+(`Engine.Define`.) The module is added to the workdir's installed bundle as
+`/tmp/wd/definitions/classify.installed/acme.star`, with its entry written
+into that bundle's `bundle.yaml`, and swapped in atomically. On the second classification only the new
 `widget` classifier ran: every other classifier's output for these files
 came from the cache. Another process using the same workdir sees the module
 after `Refresh` (or automatically with `WithAutoRefresh`), and

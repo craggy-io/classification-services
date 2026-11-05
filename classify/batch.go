@@ -136,9 +136,8 @@ type MaintenanceReport = cache.Report
 
 // Maintain removes cache entries that no current definition can use
 // (results for replaced or removed classifiers, superseded whole-result
-// entries, compiled programs for modules no longer loaded), stat-index
-// entries for files that changed or vanished, and stale spool and temp
-// files. It is safe to run while other processes use the workdir: at worst
+// entries), stat-index entries for files that changed or vanished, and
+// stale spool and temp files. It is safe to run while other processes use the workdir: at worst
 // they recompute an entry. It never touches definitions/.
 func (e *Engine) Maintain(ctx context.Context) (MaintenanceReport, error) {
 	if e.closed.Load() {
@@ -150,13 +149,8 @@ func (e *Engine) Maintain(ctx context.Context) (MaintenanceReport, error) {
 	sp := startSpan(e.cfg.observer, nil, "maintain", e.store.Root())
 	snap := e.snap.Load()
 	keep := snap.entryNames()
-	programs := map[string]bool{}
-	for _, m := range snap.modules {
-		programs[m.SourceHash] = true
-	}
 	rep, err := e.store.Maintain(cache.Policy{
-		KeepResult:  func(f string) bool { return keep[f] },
-		KeepProgram: func(h string) bool { return programs[h] },
+		KeepResult: func(f string) bool { return keep[f] },
 	})
 	sp.count("results_removed", int64(rep.ResultsRemoved))
 	sp.end(err)

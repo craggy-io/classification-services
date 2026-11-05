@@ -13,17 +13,17 @@ func TestLoadRejectsDegenerateDeclarations(t *testing.T) {
 		`test("t")`,                    // no expectations
 		`test("", expect = ["a.b"])`,   // empty test name
 	} {
-		if _, err := definitions.Load("bad", []byte(bad), nil); err == nil {
+		if _, err := definitions.Load(context.Background(), "bad", []byte(bad)); err == nil {
 			t.Errorf("accepted %q", bad)
 		}
 	}
 }
 
-func TestLoadContextCancelled(t *testing.T) {
+func TestLoadCancelled(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	src := "x = 0\nfor i in range(100000000):\n    x += i\n"
-	if _, err := definitions.LoadContext(ctx, "slow", []byte(src), nil); err == nil {
+	if _, err := definitions.Load(ctx, "slow", []byte(src)); err == nil {
 		t.Fatal("cancelled load succeeded")
 	}
 }

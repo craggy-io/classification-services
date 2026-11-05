@@ -39,8 +39,7 @@ func below(from string, allowed ...string) archtest.Rule {
 // an indirect import through an unplaced package (such as internal/paged) is
 // not caught. It also checks only this module: adapters/artifactsvc is a
 // nested module and is exempt from the core-module rules, and the module
-// graph (go.mod requires) isn't inspected. Test-only requires such as
-// foundation-kit are therefore outside the core-module rule.
+// graph (go.mod requires) isn't inspected.
 func TestArchitecture(t *testing.T) {
 	archtest.Check(t, archtest.Config{
 		Rules: []archtest.Rule{
@@ -66,11 +65,11 @@ func TestArchitecture(t *testing.T) {
 				Forbid: []string{"./probes"},
 			},
 			{
-				Name:   "core module is stdlib and go.starlark.net only",
-				Why:    "AGENTS.md: the core module imports only the standard library and go.starlark.net; put integrations in a nested module under adapters/",
+				Name:   "core module is stdlib, go.starlark.net and foundation-kit only",
+				Why:    "AGENTS.md: the core module imports only the standard library, go.starlark.net and foundation-kit (bundle loading is the shared path); put integrations in a nested module under adapters/",
 				From:   []string{"./..."},
 				Forbid: []string{archtest.External},
-				Allow:  []string{"go.starlark.net/..."},
+				Allow:  []string{"go.starlark.net/...", "github.com/craggy-io/foundation-kit/..."},
 			},
 			{
 				Name:   "no artifact-services",

@@ -4,13 +4,17 @@
 //
 //	craggy-classify [classify] [flags] PATH...   classify files (directories are walked)
 //	craggy-classify types [--json] [PREFIX]      list catalogue types
-//	craggy-classify check FILE.star              validate a module and run its tests
-//	craggy-classify preview FILE.star [PATH...]  show what a module would change
-//	craggy-classify define FILE.star             test and install a module
+//	craggy-classify check BUNDLE[#ID]               validate modules and run their tests
+//	craggy-classify preview BUNDLE[#ID] [PATH...]   show what the modules would change
+//	craggy-classify define BUNDLE[#ID]              test and install the modules
 //	craggy-classify remove NAME                  uninstall a module
 //	craggy-classify definitions                  list installed modules
 //	craggy-classify test                         run every installed module's tests
 //	craggy-classify maintain                     prune the cache
+//
+// BUNDLE is a directory with a bundle.yaml. Without #ID, every
+// classify.module@1 contribution in it is used; with #ID, only that one.
+// Module names are contribution IDs.
 //
 // The workdir defaults to $CRAGGY_CLASSIFY_WORKDIR, else
 // <user cache dir>/craggy/classification.
@@ -28,8 +32,12 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/craggy-io/foundation-kit/bundle"
+
 	"github.com/craggy-io/classification-services/classify"
+	"github.com/craggy-io/classification-services/definitions"
 	"github.com/craggy-io/classification-services/evidence"
+	"github.com/craggy-io/classification-services/signatures"
 )
 
 // Exit codes.
@@ -144,7 +152,7 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	fs.Usage = func() { fmt.Fprintln(stderr, usage) }
 	var c common
 	c.register(fs)
-	var depth, failOn, name, explain string
+	var depth, failOn, explain string
 	var tree bool
 	switch cmd {
 	case "classify":
@@ -152,8 +160,6 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 		fs.StringVar(&failOn, "fail-on", "", "exit 2 if an anomaly of this severity or higher is reported (info, warning, critical)")
 		fs.StringVar(&explain, "explain", "", "explain why TYPE holds (or was rejected)")
 		fs.BoolVar(&tree, "tree", false, "print derived children")
-	case "check", "preview", "define":
-		fs.StringVar(&name, "name", "", "module name (default: file name without .star)")
 	}
 	pos, err := parse(fs, args)
 	if err != nil {
@@ -219,35 +225,36 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 		}
 		return exitOK
 	case "check", "define", "preview":
-		if cmd != "preview" && !arity("exactly one FILE.star", len(pos) == 1) {
+		if cmd != "preview" && !arity("exactly one BUNDLE[#ID]", len(pos) == 1) {
 			return exitError
 		}
 		if len(pos) == 0 {
-			fmt.Fprintf(stderr, "craggy-classify %s: missing FILE.star\n", cmd)
+			fmt.Fprintf(stderr, "craggy-classify %s: missing BUNDLE[#ID]\n", cmd)
 			return exitError
 		}
-		src, err := os.ReadFile(pos[0])
+		mods, err := bundleModules(ctx, pos[0])
 		if err != nil {
 			fmt.Fprintln(stderr, err)
 			return exitError
 		}
-		if name == "" {
-			name = strings.TrimSuffix(filepath.Base(pos[0]), ".star")
-		}
 		switch cmd {
 		case "check":
-			rep, err := e.Check(ctx, name, src)
+			reps, err := e.CheckModules(ctx, mods...)
 			if err != nil {
 				fmt.Fprintln(stderr, err)
 				return exitError
 			}
-			out.check(rep)
-			if !rep.Passed() {
+			failed := false
+			for _, rep := range reps {
+				out.check(rep)
+				failed = failed || !rep.Passed()
+			}
+			if failed {
 				return exitError
 			}
 		case "define":
-			rep, err := e.Define(ctx, name, src)
-			if rep != nil {
+			reps, err := e.DefineModules(ctx, mods...)
+			for _, rep := range reps {
 				out.check(rep)
 			}
 			if err != nil {
@@ -259,7 +266,7 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 			for _, p := range pos[1:] {
 				sources = append(sources, classify.File(p))
 			}
-			rep, err := e.Preview(ctx, name, src, sources...)
+			rep, err := e.PreviewModules(ctx, mods, sources...)
 			if err != nil {
 				fmt.Fprintln(stderr, err)
 				return exitError
@@ -296,8 +303,8 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 			fmt.Fprintln(stderr, err)
 			return exitError
 		}
-		out.line(fmt.Sprintf("removed %d results, %d programs, %d stat entries, %d spool and %d temp files; kept %d results",
-			rep.ResultsRemoved, rep.ProgramsRemoved, rep.StatRemoved, rep.SpoolRemoved, rep.TempRemoved, rep.ResultsKept), rep)
+		out.line(fmt.Sprintf("removed %d results, %d stat entries, %d spool and %d temp files; kept %d results",
+			rep.ResultsRemoved, rep.StatRemoved, rep.SpoolRemoved, rep.TempRemoved, rep.ResultsKept), rep)
 		return exitOK
 	}
 	return exitError
@@ -367,13 +374,17 @@ commands:
   classify PATH...        classify files; directories are walked (default command)
       --depth quick|standard|deep   --tree   --explain TYPE   --fail-on SEVERITY
   types [PREFIX]          list catalogue types
-  check FILE.star         validate a module and run its inline tests
-  preview FILE.star [PATH...]   show what a module would change (default: known files)
-  define FILE.star        test and install a module into the workdir
+  check BUNDLE[#ID]       validate modules and run their inline tests
+  preview BUNDLE[#ID] [PATH...]   show what the modules would change (default: known files)
+  define BUNDLE[#ID]      test and install the modules into the workdir
   remove NAME             uninstall a module
   definitions             list installed modules
   test                    run every installed module's inline tests
   maintain                prune cache entries no definition can use
+
+BUNDLE is a directory with a bundle.yaml listing its modules as
+classify.module@1 contributions; module names are their contribution IDs.
+Without #ID every module in the bundle is used, with #ID only that one.
 
 common flags:
   --workdir DIR           default $CRAGGY_CLASSIFY_WORKDIR or <user cache>/craggy/classification
@@ -381,3 +392,57 @@ common flags:
 
 exit status: 0 ok, 1 error or failed test, 2 anomaly at or above --fail-on (1 wins when both occur)
 a file named like a command is classified when written as ./test, or after classify flags`
+
+// bundleModules loads the bundle named by arg, "DIR" or "DIR#ID", through
+// bundle.Load, and returns its classify.module@1 contributions (or just
+// ID's) as module sources named by contribution ID.
+func bundleModules(ctx context.Context, arg string) ([]classify.ModuleSource, error) {
+	dir, id, selected := arg, "", false
+	if i := strings.LastIndex(arg, "#"); i >= 0 {
+		dir, id, selected = arg[:i], arg[i+1:], true
+	}
+	if _, err := os.Stat(filepath.Join(dir, "bundle.yaml")); err != nil {
+		return nil, fmt.Errorf("craggy-classify: %s is not a bundle: a definitions folder needs a bundle.yaml listing its modules (%w)", dir, err)
+	}
+	cat, err := bundle.Load(ctx, bundle.Options{
+		Sources: []bundle.Source{bundle.Dir(dir)},
+		Compilers: []bundle.AnyCompiler{
+			bundle.Compile(definitions.ModuleKind, definitions.Compile),
+			bundle.Compile(signatures.CyberChefKind, signatures.CompileCyberChef),
+		},
+	})
+	if err != nil {
+		return nil, describeLoadError(err)
+	}
+	var mods []classify.ModuleSource
+	for _, d := range bundle.All(cat, definitions.ModuleKind) {
+		if !selected || d.Ref.ID == id {
+			mods = append(mods, classify.ModuleSource{Name: d.Value.Name, Source: d.Value.Source})
+		}
+	}
+	switch {
+	case selected && len(mods) == 0:
+		return nil, fmt.Errorf("craggy-classify: bundle %s has no %s contribution %q", dir, definitions.ModuleKind.ID(), id)
+	case len(mods) == 0:
+		return nil, fmt.Errorf("craggy-classify: bundle %s has no %s contributions", dir, definitions.ModuleKind.ID())
+	}
+	return mods, nil
+}
+
+// describeLoadError lists every diagnostic of a *bundle.LoadError, one per
+// line with its file and line.
+func describeLoadError(err error) error {
+	var le *bundle.LoadError
+	if !errors.As(err, &le) {
+		return err
+	}
+	var b strings.Builder
+	for _, d := range le.Diagnostics {
+		where := d.Path
+		if d.Line > 0 {
+			where = fmt.Sprintf("%s:%d:%d", d.Path, d.Line, d.Column)
+		}
+		fmt.Fprintf(&b, "\n  %s: %s: %s", where, d.Code, d.Message)
+	}
+	return fmt.Errorf("%w%s", err, b.String())
+}

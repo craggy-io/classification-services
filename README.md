@@ -11,8 +11,10 @@ a ZIP is also bytes. Content found inside the input (archive entries,
 decompressed payloads, executable overlays, PEM blocks) is classified
 recursively into a content DAG, and anomalies such as polyglots, path
 traversal, extension mismatches and active PDF content are reported alongside
-types. The core depends only on the standard library and
-[Starlark](https://github.com/google/starlark-go).
+types. The core depends only on the standard library,
+[Starlark](https://github.com/google/starlark-go) and
+[foundation-kit](https://github.com/craggy-io/foundation-kit), whose `bundle`
+package is the one path for loading definitions.
 
 New formats are defined at runtime in Starlark: one module declares types,
 signatures, classifiers and inline tests. A module can be checked, previewed
@@ -27,6 +29,7 @@ several processes can share.
 - **Security-relevant anomalies:** [polyglots, ZIP slip, overlays, macros, PDF active content, unsigned or debuggable APKs](docs/recognisers.md#anomalies), and extension mismatches, graded `info`/`warning`/`critical`.
 - **Recursive content DAG:** archive entries, compressed payloads, overlays and (at `Deep`) speculative decodings are classified in turn; identical content is one shared node, bounded by depth, node, size and expansion limits.
 - **Runtime definitions with tests:** [Starlark modules](docs/definitions.md) with `test()` cases; `Check`, `Preview` and `Define` reject a module whose tests fail.
+- **Definitions are bundles:** built-in, shipped and installed modules all load through foundation-kit's `bundle.Load`/`bundle.Live`. [Every definitions folder needs a `bundle.yaml`](docs/definitions.md#bundles) listing its modules; nothing is discovered from file names.
 - **Shared, incremental cache:** [one entry per (content, classifier revision)](docs/cache.md), so installing a module reruns only its classifiers; explicit `Maintain` and cross-process `Refresh`.
 - **Batch, CLI and observation:** `ClassifyMany`, `ClassifyDir`, the [`craggy-classify` CLI](docs/cli.md) with JSON lines, and observer events that the [artifact-services adapter](docs/artifact-services.md) maps onto its observability spans.
 
@@ -69,7 +72,7 @@ for _, c := range r.Children { ... }        // classes.dex -> android.dex
 
 ```sh
 craggy-classify --tree --fail-on critical samples
-craggy-classify check samples/widgets.star && craggy-classify define samples/widgets.star
+craggy-classify check samples/widgets && craggy-classify define samples/widgets   # a bundle: samples/widgets/bundle.yaml
 ```
 
 Start with the [documentation index](docs/README.md), the

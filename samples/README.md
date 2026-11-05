@@ -31,17 +31,17 @@ go run ./cmd/craggy-classify --depth deep --tree samples/encoded.b64
 | `config.json` | `data.json` | |
 | `run.sh` | `source.python` | Interpreter from the shebang line, not the extension |
 | `notes.txt` | `text` | |
-| `current.wdg`, `legacy.wdg` | `text` | Unknown format until `widgets.star` is installed |
-| `widgets.star` | | Example definition module with inline tests ([guide](../docs/definitions.md)) |
+| `current.wdg`, `legacy.wdg` | `text` | Unknown format until the `widgets` bundle is installed |
+| `widgets/` | | Example definitions bundle: `bundle.yaml` and the module `acme` (`acme.star`) with inline tests ([guide](../docs/definitions.md#bundles)) |
 
 Try the definition lifecycle on the `.wdg` files:
 
 ```sh
-go run ./cmd/craggy-classify check samples/widgets.star     # run its tests
-go run ./cmd/craggy-classify preview samples/widgets.star   # current.wdg, legacy.wdg would change
-go run ./cmd/craggy-classify define samples/widgets.star    # install it
+go run ./cmd/craggy-classify check samples/widgets          # run its tests (or samples/widgets#acme)
+go run ./cmd/craggy-classify preview samples/widgets        # current.wdg, legacy.wdg would change
+go run ./cmd/craggy-classify define samples/widgets         # install it
 go run ./cmd/craggy-classify samples/legacy.wdg             # acme.widget + acme.legacy warning
-go run ./cmd/craggy-classify remove widgets
+go run ./cmd/craggy-classify remove acme
 ```
 
 Without `--workdir`, the CLI uses `<user cache dir>/craggy/classification`.

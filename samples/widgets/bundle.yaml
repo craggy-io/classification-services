@@ -1,0 +1,11 @@
+apiVersion: craggy.io/bundle/v1
+
+metadata:
+  id: acme.widgets
+  version: 1.0.0
+  title: Acme widget definitions (sample)
+
+contributions:
+  - id: acme                  # the module name
+    kind: classify.module@1
+    path: acme.star
