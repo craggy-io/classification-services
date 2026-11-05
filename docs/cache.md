@@ -15,7 +15,7 @@ engines and processes.
 
 ```
 <workdir>/
-  definitions/classify.installed/   the bundle Define / Remove rewrite
+  definitions/classify.installed/   the bundle Define / Remove change with Live.Edit
     bundle.yaml                    its manifest, listing every installed module
     <name>.star                    one runtime-defined module
   cache/stat/                      (absolute path, size, mtime) -> digest
@@ -45,7 +45,7 @@ Every entry is written to a temporary file and renamed into place, and is
 immutable once written. Two processes sharing a workdir can at worst
 duplicate work. There is no lock file and no database. Within a process,
 concurrent runs of the same classifier on the same content share one
-execution. Definitions are replaced atomically by `bundle.Live.Install`; another
+execution. Definitions are replaced atomically by `bundle.Live.Edit`; another
 engine sees them after `Refresh` (or automatically with `WithAutoRefresh`),
 which reloads the bundles. Compiled modules are kept only in memory: a
 reload reuses the compiled value of every bundle whose content is unchanged,

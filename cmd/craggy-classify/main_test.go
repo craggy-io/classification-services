@@ -63,13 +63,6 @@ test("thing", data = '{"thing": 1}', primary = "acme.thing")
 	if code, out, _ := cli(t, wd, "preview", def); code != exitOK || !strings.Contains(out, "t.json: data.json -> acme.thing") {
 		t.Fatalf("preview: %d %s", code, out)
 	}
-	// #ID picks one module; without it every module is used.
-	if code, out, errs := cli(t, wd, "check", def+"#acme-extra"); code != exitOK || !strings.Contains(out, "acme-extra:") || strings.Contains(out, "acme:") {
-		t.Fatalf("check #acme-extra: %d %s %s", code, out, errs)
-	}
-	if code, _, errs := cli(t, wd, "check", def+"#nope"); code != exitError || !strings.Contains(errs, `contribution "nope"`) {
-		t.Fatalf("check #nope: %d %s", code, errs)
-	}
 	if code, _, errs := cli(t, wd, "check", filepath.Join(def, "modules")); code != exitError || !strings.Contains(errs, "bundle.yaml") {
 		t.Fatalf("check without bundle.yaml: %d %s", code, errs)
 	}

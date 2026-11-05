@@ -4,17 +4,16 @@
 //
 //	craggy-classify [classify] [flags] PATH...   classify files (directories are walked)
 //	craggy-classify types [--json] [PREFIX]      list catalogue types
-//	craggy-classify check BUNDLE[#ID]               validate modules and run their tests
-//	craggy-classify preview BUNDLE[#ID] [PATH...]   show what the modules would change
-//	craggy-classify define BUNDLE[#ID]              test and install the modules
+//	craggy-classify check BUNDLE                 validate modules and run their tests
+//	craggy-classify preview BUNDLE [PATH...]     show what the modules would change
+//	craggy-classify define BUNDLE                test and install the modules
 //	craggy-classify remove NAME                  uninstall a module
 //	craggy-classify definitions                  list installed modules
 //	craggy-classify test                         run every installed module's tests
 //	craggy-classify maintain                     prune the cache
 //
-// BUNDLE is a directory with a bundle.yaml. Without #ID, every
-// classify.module@1 contribution in it is used; with #ID, only that one.
-// Module names are contribution IDs.
+// BUNDLE is a directory with a bundle.yaml. Its classify.module@1
+// contributions are used together; module names are contribution IDs.
 //
 // The workdir defaults to $CRAGGY_CLASSIFY_WORKDIR, else
 // <user cache dir>/craggy/classification.
@@ -225,11 +224,7 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 		}
 		return exitOK
 	case "check", "define", "preview":
-		if cmd != "preview" && !arity("exactly one BUNDLE[#ID]", len(pos) == 1) {
-			return exitError
-		}
-		if len(pos) == 0 {
-			fmt.Fprintf(stderr, "craggy-classify %s: missing BUNDLE[#ID]\n", cmd)
+		if !arity("one BUNDLE", len(pos) == 1 || cmd == "preview" && len(pos) > 1) {
 			return exitError
 		}
 		mods, err := bundleModules(ctx, pos[0])
@@ -239,22 +234,18 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 		}
 		switch cmd {
 		case "check":
-			reps, err := e.CheckModules(ctx, mods...)
+			rep, err := e.Check(ctx, mods)
 			if err != nil {
 				fmt.Fprintln(stderr, err)
 				return exitError
 			}
-			failed := false
-			for _, rep := range reps {
-				out.check(rep)
-				failed = failed || !rep.Passed()
-			}
-			if failed {
+			out.check(rep)
+			if !rep.Passed() {
 				return exitError
 			}
 		case "define":
-			reps, err := e.DefineModules(ctx, mods...)
-			for _, rep := range reps {
+			rep, err := e.Define(ctx, mods)
+			if rep != nil {
 				out.check(rep)
 			}
 			if err != nil {
@@ -266,7 +257,7 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 			for _, p := range pos[1:] {
 				sources = append(sources, classify.File(p))
 			}
-			rep, err := e.PreviewModules(ctx, mods, sources...)
+			rep, err := e.Preview(ctx, mods, sources...)
 			if err != nil {
 				fmt.Fprintln(stderr, err)
 				return exitError
@@ -374,9 +365,9 @@ commands:
   classify PATH...        classify files; directories are walked (default command)
       --depth quick|standard|deep   --tree   --explain TYPE   --fail-on SEVERITY
   types [PREFIX]          list catalogue types
-  check BUNDLE[#ID]       validate modules and run their inline tests
-  preview BUNDLE[#ID] [PATH...]   show what the modules would change (default: known files)
-  define BUNDLE[#ID]      test and install the modules into the workdir
+  check BUNDLE            validate modules and run their inline tests
+  preview BUNDLE [PATH...]   show what the modules would change (default: known files)
+  define BUNDLE           test and install the modules into the workdir
   remove NAME             uninstall a module
   definitions             list installed modules
   test                    run every installed module's inline tests
@@ -384,7 +375,7 @@ commands:
 
 BUNDLE is a directory with a bundle.yaml listing its modules as
 classify.module@1 contributions; module names are their contribution IDs.
-Without #ID every module in the bundle is used, with #ID only that one.
+All of them are checked, previewed or defined together.
 
 common flags:
   --workdir DIR           default $CRAGGY_CLASSIFY_WORKDIR or <user cache>/craggy/classification
@@ -393,17 +384,9 @@ common flags:
 exit status: 0 ok, 1 error or failed test, 2 anomaly at or above --fail-on (1 wins when both occur)
 a file named like a command is classified when written as ./test, or after classify flags`
 
-// bundleModules loads the bundle named by arg, "DIR" or "DIR#ID", through
-// bundle.Load, and returns its classify.module@1 contributions (or just
-// ID's) as module sources named by contribution ID.
-func bundleModules(ctx context.Context, arg string) ([]classify.ModuleSource, error) {
-	dir, id, selected := arg, "", false
-	if i := strings.LastIndex(arg, "#"); i >= 0 {
-		dir, id, selected = arg[:i], arg[i+1:], true
-	}
-	if _, err := os.Stat(filepath.Join(dir, "bundle.yaml")); err != nil {
-		return nil, fmt.Errorf("craggy-classify: %s is not a bundle: a definitions folder needs a bundle.yaml listing its modules (%w)", dir, err)
-	}
+// bundleModules loads the bundle at dir through bundle.Load and returns its
+// classify.module@1 contributions' sources, by contribution ID.
+func bundleModules(ctx context.Context, dir string) (map[string][]byte, error) {
 	cat, err := bundle.Load(ctx, bundle.Options{
 		Sources: []bundle.Source{bundle.Dir(dir)},
 		Compilers: []bundle.AnyCompiler{
@@ -412,37 +395,14 @@ func bundleModules(ctx context.Context, arg string) ([]classify.ModuleSource, er
 		},
 	})
 	if err != nil {
-		return nil, describeLoadError(err)
+		return nil, err
 	}
-	var mods []classify.ModuleSource
+	mods := map[string][]byte{}
 	for _, d := range bundle.All(cat, definitions.ModuleKind) {
-		if !selected || d.Ref.ID == id {
-			mods = append(mods, classify.ModuleSource{Name: d.Value.Name, Source: d.Value.Source})
-		}
+		mods[d.Value.Name] = d.Value.Source
 	}
-	switch {
-	case selected && len(mods) == 0:
-		return nil, fmt.Errorf("craggy-classify: bundle %s has no %s contribution %q", dir, definitions.ModuleKind.ID(), id)
-	case len(mods) == 0:
+	if len(mods) == 0 {
 		return nil, fmt.Errorf("craggy-classify: bundle %s has no %s contributions", dir, definitions.ModuleKind.ID())
 	}
 	return mods, nil
-}
-
-// describeLoadError lists every diagnostic of a *bundle.LoadError, one per
-// line with its file and line.
-func describeLoadError(err error) error {
-	var le *bundle.LoadError
-	if !errors.As(err, &le) {
-		return err
-	}
-	var b strings.Builder
-	for _, d := range le.Diagnostics {
-		where := d.Path
-		if d.Line > 0 {
-			where = fmt.Sprintf("%s:%d:%d", d.Path, d.Line, d.Column)
-		}
-		fmt.Fprintf(&b, "\n  %s: %s: %s", where, d.Code, d.Message)
-	}
-	return fmt.Errorf("%w%s", err, b.String())
 }

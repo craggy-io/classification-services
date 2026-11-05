@@ -80,7 +80,7 @@ func TestSamples(t *testing.T) {
 	if !ok {
 		t.Fatal("samples/widgets has no module acme")
 	}
-	rep, err := e.Check(ctx, def.Value.Name, def.Value.Source)
+	rep, err := e.Check(ctx, map[string][]byte{def.Value.Name: def.Value.Source})
 	if err != nil || !rep.Passed() {
 		t.Fatalf("samples/widgets#acme: %+v %v", rep, err)
 	}

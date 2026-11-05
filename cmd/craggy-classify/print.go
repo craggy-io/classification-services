@@ -134,17 +134,13 @@ func (p *printer) check(rep *classify.CheckReport) {
 		p.emit(rep)
 		return
 	}
-	verb := "adds"
-	if rep.Replaces {
-		verb = "replaces an installed module and adds"
-	}
-	fmt.Fprintf(p.w, "%s: %s %d types, %d classifiers, %d signatures\n", rep.Module, verb, len(rep.AddedTypes), len(rep.Classifiers), rep.Signatures)
+	fmt.Fprintf(p.w, "%s: adds %d types, %d classifiers, %d signatures\n", strings.Join(rep.Modules, ", "), len(rep.AddedTypes), len(rep.Classifiers), rep.Signatures)
 	for _, lt := range []struct {
 		label string
 		ts    []string
-	}{{"changed", rep.ChangedTypes}, {"removed", rep.RemovedTypes}} {
+	}{{"replaces modules", rep.Replaces}, {"changed types", rep.ChangedTypes}, {"removed types", rep.RemovedTypes}} {
 		if len(lt.ts) > 0 {
-			fmt.Fprintf(p.w, "  %s types: %s\n", lt.label, strings.Join(lt.ts, ", "))
+			fmt.Fprintf(p.w, "  %s: %s\n", lt.label, strings.Join(lt.ts, ", "))
 		}
 	}
 	for _, t := range rep.Tests {
@@ -164,9 +160,7 @@ func (p *printer) preview(rep *classify.PreviewReport) {
 		p.emit(rep)
 		return
 	}
-	for _, c := range rep.Checks {
-		p.check(c)
-	}
+	p.check(rep.Check)
 	fmt.Fprintf(p.w, "examined %d files, %d would change\n", rep.Examined, len(rep.Changes))
 	for _, c := range rep.Changes {
 		fmt.Fprintf(p.w, "  %s: %s -> %s", c.Name, c.PrimaryBefore, c.PrimaryAfter)
