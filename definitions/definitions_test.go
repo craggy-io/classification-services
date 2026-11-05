@@ -30,7 +30,7 @@ func TestLoadDeclarations(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if m.Doc != "Widgets." || len(m.Types) != 1 || m.Types[0].Priority != 2 || len(m.Classifiers) != 1 || len(m.Tests) != 1 {
+	if len(m.Types) != 1 || m.Types[0].Priority != 2 || len(m.Classifiers) != 1 || len(m.Tests) != 1 {
 		t.Fatalf("module = %+v", m)
 	}
 	sig := m.Signatures[0]

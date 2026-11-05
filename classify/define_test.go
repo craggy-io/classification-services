@@ -50,14 +50,14 @@ func TestDefineCheckRemoveAndPersist(t *testing.T) {
 	if r := classifyOK(t, e, src); r.Is("acme.widget") {
 		t.Fatal("widget known before Define")
 	}
-	rep, err := e.Check(ctx, "acme", []byte(widgetDef))
-	if err != nil || !rep.Passed() || !slices.Equal(rep.AddedTypes, []string{"acme", "acme.widget"}) || rep.Doc == "" {
+	rep, err := e.Check(ctx, map[string][]byte{"acme": []byte(widgetDef)})
+	if err != nil || !rep.Passed() || !slices.Equal(rep.AddedTypes, []string{"acme", "acme.widget"}) {
 		t.Fatalf("check = %+v, %v", rep, err)
 	}
 	if r := classifyOK(t, e, src); r.Is("acme.widget") {
 		t.Fatal("Check installed the definition")
 	}
-	if _, err := e.Define(ctx, "acme", []byte(widgetDef)); err != nil {
+	if _, err := e.Define(ctx, map[string][]byte{"acme": []byte(widgetDef)}); err != nil {
 		t.Fatal(err)
 	}
 	r := classifyOK(t, e, src)
@@ -82,7 +82,7 @@ func TestDefineCheckRemoveAndPersist(t *testing.T) {
 	if classifyOK(t, e, src).Is("acme.widget") {
 		t.Fatal("still a widget after Remove")
 	}
-	if err := e.Remove(ctx, "java-archives"); err == nil || !strings.Contains(err.Error(), "built in") {
+	if err := e.Remove(ctx, "java-archives"); err == nil || !strings.Contains(err.Error(), classify.BuiltinBundle) {
 		t.Fatalf("removing a built-in: %v", err)
 	}
 	if err := e.Remove(ctx, "nope"); !errors.Is(err, os.ErrNotExist) {
@@ -94,7 +94,7 @@ func TestDefineRejectsFailingTestsAndBadModules(t *testing.T) {
 	ctx := context.Background()
 	e := open(t)
 	bad := strings.Replace(widgetDef, `primary = "acme.widget"`, `primary = "data.json"`, 1)
-	rep, err := e.Define(ctx, "acme", []byte(bad))
+	rep, err := e.Define(ctx, map[string][]byte{"acme": []byte(bad)})
 	var ce *classify.CheckError
 	if !errors.As(err, &ce) || rep.Passed() || !strings.Contains(err.Error(), "primary is acme.widget, want data.json") {
 		t.Fatalf("failing test: %v", err)
@@ -115,7 +115,7 @@ classifier("r", produces = ["missing.type"], run = _r)`,
 		"bad-sig":    `signature("missing.type", at(0, "00"))`,
 		"Bad Name!!": `type("acme.ok")`,
 	} {
-		if _, err := e.Define(ctx, name, []byte(src)); err == nil {
+		if _, err := e.Define(ctx, map[string][]byte{name: []byte(src)}); err == nil {
 			t.Fatalf("%s: Define accepted %q", name, src)
 		}
 	}
@@ -144,7 +144,7 @@ func TestCacheAcrossEnginesAndOnlyNewClassifierRuns(t *testing.T) {
 	}
 	// A new definition invalidates the whole-result entry but not the
 	// per-classifier entries: only the new classifier runs.
-	if _, err := e2.Define(ctx, "acme", []byte(widgetDef)); err != nil {
+	if _, err := e2.Define(ctx, map[string][]byte{"acme": []byte(widgetDef)}); err != nil {
 		t.Fatal(err)
 	}
 	classifyOK(t, e2, src)
@@ -174,7 +174,7 @@ func TestInFlightSnapshotIsStable(t *testing.T) {
 		r, _ = e.Classify(ctx, classify.Bytes([]byte("WIDGET: 1")))
 	}()
 	<-started
-	if _, err := e.Define(ctx, "acme", []byte(widgetDef)); err != nil {
+	if _, err := e.Define(ctx, map[string][]byte{"acme": []byte(widgetDef)}); err != nil {
 		t.Fatal(err)
 	}
 	close(release)
@@ -193,7 +193,7 @@ func TestRefreshAcrossProcesses(t *testing.T) {
 	a, _ := classify.Open(ctx, dir)
 	b, _ := classify.Open(ctx, dir, classify.WithAutoRefresh(time.Nanosecond))
 	c, _ := classify.Open(ctx, dir)
-	if _, err := a.Define(ctx, "acme", []byte(widgetDef)); err != nil {
+	if _, err := a.Define(ctx, map[string][]byte{"acme": []byte(widgetDef)}); err != nil {
 		t.Fatal(err)
 	}
 	src := classify.Bytes([]byte("WIDGET: 3"))
@@ -225,7 +225,7 @@ func TestPreview(t *testing.T) {
 	for _, p := range []string{widget, other} {
 		classifyOK(t, e, classify.File(p))
 	}
-	rep, err := e.Preview(ctx, "acme", []byte(widgetDef))
+	rep, err := e.Preview(ctx, map[string][]byte{"acme": []byte(widgetDef)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -260,7 +260,7 @@ classifier("blob", produces = ["acme.blob"], derives = True, run = _blob)
 test("blob", hex = "424c4f420500000057494447455420454e44", expect = ["acme.blob"])
 `
 	e := open(t)
-	if _, err := e.Define(ctx, "blob", []byte(def)); err != nil {
+	if _, err := e.Define(ctx, map[string][]byte{"blob": []byte(def)}); err != nil {
 		t.Fatal(err)
 	}
 	r := classifyOK(t, e, classify.Bytes([]byte("BLOB\x05\x00\x00\x00WIDGET: END")).Named("x.bin"))
@@ -288,7 +288,7 @@ def _bad(ctx):
 classifier("spin", produces = ["acme.spin"], run = _spin)
 classifier("bad", run = _bad)
 `
-	if _, err := e.Define(ctx, "spin", []byte(def)); err != nil {
+	if _, err := e.Define(ctx, map[string][]byte{"spin": []byte(def)}); err != nil {
 		t.Fatal(err)
 	}
 	r := classifyOK(t, e, classify.Bytes([]byte("x")))
@@ -330,7 +330,7 @@ func TestWithSources(t *testing.T) {
 	bundletest.RequireCode(t, err, bundle.CodeIDConflict)
 
 	// So does a module installed with Define of a WithSources module's name.
-	if _, err := e.Define(context.Background(), "acme", []byte(widgetDef)); err == nil {
+	if _, err := e.Define(context.Background(), map[string][]byte{"acme": []byte(widgetDef)}); err == nil {
 		t.Fatal("Define replaced a WithSources module")
 	}
 }
@@ -342,14 +342,14 @@ func TestInstalledBundleOnDisk(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := e.Define(ctx, "acme", []byte(widgetDef)); err != nil {
+	if _, err := e.Define(ctx, map[string][]byte{"acme": []byte(widgetDef)}); err != nil {
 		t.Fatal(err)
 	}
 	// Replacing a built-in on purpose: the installed bundle overrides it.
 	hasJar := func() bool {
 		return slices.ContainsFunc(e.Classifiers(), func(s classify.Spec) bool { return s.ID == "jar" })
 	}
-	if _, err := e.Define(ctx, "java-archives", []byte(`"""No Java classifiers."""`)); err != nil {
+	if _, err := e.Define(ctx, map[string][]byte{"java-archives": []byte(`"""No Java classifiers."""`)}); err != nil {
 		t.Fatal(err)
 	}
 	if hasJar() {
@@ -357,7 +357,7 @@ func TestInstalledBundleOnDisk(t *testing.T) {
 	}
 	inst := filepath.Join(dir, "definitions", classify.InstalledBundle)
 	manifest, err := os.ReadFile(filepath.Join(inst, "bundle.yaml"))
-	if err != nil || !strings.Contains(string(manifest), `id: "acme"`) || !strings.Contains(string(manifest), `path: "java-archives.star"`) {
+	if err != nil || !strings.Contains(string(manifest), "acme.star") || !strings.Contains(string(manifest), "java-archives.star") {
 		t.Fatalf("installed bundle.yaml = %s, %v", manifest, err)
 	}
 	if b, err := os.ReadFile(filepath.Join(inst, "acme.star")); err != nil || string(b) != widgetDef {
@@ -382,9 +382,8 @@ func TestInstalledBundleOnDisk(t *testing.T) {
 		t.Fatal(err)
 	}
 	os.WriteFile(filepath.Join(inst, "acme.star"), []byte(widgetDef), 0o644)
-	if _, err := classify.Open(ctx, dir); err == nil || !strings.Contains(err.Error(), "no bundle.yaml") {
-		t.Fatalf("Open with a manifest-less installed folder: %v", err)
-	}
+	_, err = classify.Open(ctx, dir)
+	bundletest.RequireCode(t, err, bundle.CodeManifestMissing)
 }
 
 func TestEngineTestRunsBuiltinModuleTests(t *testing.T) {
@@ -444,7 +443,7 @@ func TestClassifyManyDirAndMaintain(t *testing.T) {
 	}
 
 	// After replacing a module, Maintain drops entries no snapshot uses.
-	if _, err := e.Define(ctx, "acme", []byte(widgetDef)); err != nil {
+	if _, err := e.Define(ctx, map[string][]byte{"acme": []byte(widgetDef)}); err != nil {
 		t.Fatal(err)
 	}
 	rep, err := e.Maintain(ctx)
@@ -457,34 +456,31 @@ func TestClassifyManyDirAndMaintain(t *testing.T) {
 	}
 }
 
-func TestDefineModulesInstallsTogetherOrNotAtAll(t *testing.T) {
+func TestDefineInstallsModulesTogetherOrNotAtAll(t *testing.T) {
 	ctx := context.Background()
 	e := open(t)
-	types := classify.ModuleSource{Name: "acme-types", Source: []byte("type(\"acme\", abstract = True)\ntype(\"acme.widget\", parents = [\"acme\", \"text\"])\n")}
-	rules := classify.ModuleSource{Name: "acme-rules", Source: []byte(`signature("acme.widget", at(0, b"WIDGET:"))
+	types := []byte("type(\"acme\", abstract = True)\ntype(\"acme.widget\", parents = [\"acme\", \"text\"])\n")
+	rules := []byte(`signature("acme.widget", at(0, b"WIDGET:"))
 test("widget", data = "WIDGET: 1", expect = ["acme.widget"])
-`)}
+`)
 	// Alone, the rules module refers to a type it doesn't declare.
-	if _, err := e.Check(ctx, rules.Name, rules.Source); err == nil {
+	if _, err := e.Check(ctx, map[string][]byte{"acme-rules": rules}); err == nil {
 		t.Fatal("rules checked without their types")
 	}
-	failing := classify.ModuleSource{Name: "acme-rules", Source: append(rules.Source, []byte(`test("bad", data = "x", expect = ["acme.widget"])`+"\n")...)}
-	reps, err := e.DefineModules(ctx, types, failing)
+	failing := append(slices.Clone(rules), []byte(`test("bad", data = "x", expect = ["acme.widget"])`+"\n")...)
+	_, err := e.Define(ctx, map[string][]byte{"acme-types": types, "acme-rules": failing})
 	var ce *classify.CheckError
-	if !errors.As(err, &ce) || len(ce.Reports) != 2 || !ce.Reports[0].Passed() || ce.Reports[1].Passed() {
-		t.Fatalf("failing DefineModules = %v", err)
+	if !errors.As(err, &ce) || ce.Report.Passed() || len(ce.Report.Tests) != 2 {
+		t.Fatalf("failing Define = %v", err)
 	}
 	if slices.Contains(e.Definitions(), "acme-types") {
 		t.Fatal("a module was installed although another failed its tests")
 	}
-	reps, err = e.DefineModules(ctx, types, rules)
-	if err != nil || len(reps) != 2 || !slices.Equal(reps[0].AddedTypes, []string{"acme", "acme.widget"}) || len(reps[1].AddedTypes) != 0 {
-		t.Fatalf("DefineModules = %+v, %v", reps, err)
+	rep, err := e.Define(ctx, map[string][]byte{"acme-types": types, "acme-rules": rules})
+	if err != nil || !slices.Equal(rep.Modules, []string{"acme-rules", "acme-types"}) || !slices.Equal(rep.AddedTypes, []string{"acme", "acme.widget"}) {
+		t.Fatalf("Define = %+v, %v", rep, err)
 	}
 	if !classifyOK(t, e, classify.Text("WIDGET: 2")).Is("acme.widget") {
 		t.Fatal("modules not installed")
-	}
-	if _, err := e.DefineModules(ctx, types, types); err == nil {
-		t.Fatal("duplicate module accepted")
 	}
 }

@@ -56,7 +56,6 @@ type Module struct {
 	Name        string
 	Source      []byte
 	SourceHash  string
-	Doc         string
 	Types       []catalog.TypeInfo
 	Signatures  []signatures.Rule
 	Classifiers []*Classifier
@@ -180,7 +179,6 @@ func load(ctx context.Context, name, file string, source []byte) (*Module, error
 	if err != nil {
 		return nil, fmt.Errorf("definitions: %s: %w", name, err)
 	}
-	mod.Doc = docstring(source)
 
 	d := &declarer{mod: mod}
 	env := starlark.StringDict{
@@ -212,19 +210,6 @@ func load(ctx context.Context, name, file string, source []byte) (*Module, error
 		c.Module = name
 	}
 	return mod, nil
-}
-
-// docstring returns a leading triple-quoted string's first line.
-func docstring(src []byte) string {
-	s := strings.TrimSpace(string(src))
-	for _, q := range []string{`"""`, `'''`} {
-		if strings.HasPrefix(s, q) {
-			if end := strings.Index(s[3:], q); end >= 0 {
-				return strings.TrimSpace(strings.SplitN(s[3:3+end], "\n", 2)[0])
-			}
-		}
-	}
-	return ""
 }
 
 type declarer struct{ mod *Module }

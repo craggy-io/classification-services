@@ -71,7 +71,7 @@ def _c(ctx):
 classifier("cyc", produces = ["acme.cyc"], run = _c)
 test("cyc", data = "x", expect = ["acme.cyc"])
 `
-	if _, err := e.Define(context.Background(), "cyc", []byte(mod)); err == nil {
+	if _, err := e.Define(context.Background(), map[string][]byte{"cyc": []byte(mod)}); err == nil {
 		t.Fatal("cyclic-metadata module installed; want its test to fail")
 	}
 }
@@ -84,7 +84,7 @@ func TestDefineCancelledContext(t *testing.T) {
 	const mod = `type("acme", abstract = True)
 type("acme.x", parents = ["acme"])
 `
-	if _, err := e.Define(ctx, "cancelled", []byte(mod)); err == nil {
+	if _, err := e.Define(ctx, map[string][]byte{"cancelled": []byte(mod)}); err == nil {
 		t.Fatal("Define with cancelled context succeeded")
 	}
 	for _, d := range e.Definitions() {

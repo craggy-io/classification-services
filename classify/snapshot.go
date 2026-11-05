@@ -71,7 +71,6 @@ type snapshot struct {
 	matcher     *signatures.Matcher
 	revision    string
 	modules     map[string]*definitions.Module // effective modules by name
-	owners      map[string]string              // module name -> owning bundle ID
 	tests       map[string][]definitions.Test
 	bundles     *bundle.Catalog // the definitions catalog this was built from
 }
@@ -80,10 +79,8 @@ type snapshot struct {
 // module and CyberChef set in it, plus the native classifiers.
 func newSnapshot(cat *bundle.Catalog, natives []Classifier) (*snapshot, error) {
 	modules := map[string]*definitions.Module{}
-	owners := map[string]string{}
 	for _, d := range bundle.All(cat, definitions.ModuleKind) {
 		modules[d.Value.Name] = d.Value
-		owners[d.Value.Name] = d.Owner.ID
 	}
 	var sigs []signatures.Rule
 	for _, d := range bundle.All(cat, signatures.CyberChefKind) {
@@ -93,7 +90,7 @@ func newSnapshot(cat *bundle.Catalog, natives []Classifier) (*snapshot, error) {
 	if err != nil {
 		return nil, err
 	}
-	snap.owners, snap.bundles = owners, cat
+	snap.bundles = cat
 	return snap, nil
 }
 

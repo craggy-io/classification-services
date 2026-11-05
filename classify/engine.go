@@ -109,11 +109,7 @@ func Open(ctx context.Context, workdir string, opts ...Option) (*Engine, error) 
 		e.natives = append(e.natives, builtinClassifiers()...)
 	}
 	e.live, err = bundle.NewLive(ctx, func(context.Context) (bundle.Options, error) {
-		installed, err := e.installedSource()
-		if err != nil {
-			return bundle.Options{}, err
-		}
-		return e.options(installed), nil
+		return e.options(st.DefinitionsDir())
 	})
 	if err != nil {
 		err = fmt.Errorf("classify: loading definitions: %w", err)
@@ -129,43 +125,31 @@ func Open(ctx context.Context, workdir string, opts ...Option) (*Engine, error) 
 	return e, nil
 }
 
-// options lists the bundles to load, with installed as the installed bundle
-// (nil when there is none). The installed bundle overrides the built-ins.
-func (e *Engine) options(installed bundle.Source) bundle.Options {
+// options lists the bundles to load: the built-ins, any WithSources bundles
+// and the installed bundle in dir, if there is one, which overrides the
+// built-ins.
+func (e *Engine) options(dir string) (bundle.Options, error) {
 	o := bundle.Options{Compilers: compilers}
 	if e.cfg.builtins {
 		o.Sources = append(o.Sources, builtinSource)
 	}
 	o.Sources = append(o.Sources, e.cfg.sources...)
-	if installed != nil {
-		o.Sources = append(o.Sources, installed)
-		if e.cfg.builtins {
-			o.BundleOverrides = []bundle.BundleOverride{{Target: BuiltinBundle, Replacement: InstalledBundle}}
-		}
+	installed := filepath.Join(dir, InstalledBundle)
+	if _, err := os.Stat(installed); errors.Is(err, fs.ErrNotExist) {
+		return o, nil
+	} else if err != nil {
+		return o, err
 	}
-	return o
+	o.Sources = append(o.Sources, bundle.Dir(installed))
+	if e.cfg.builtins {
+		o.BundleOverrides = []bundle.BundleOverride{{Target: BuiltinBundle, Replacement: InstalledBundle}}
+	}
+	return o, nil
 }
 
-// installedDir is where Live.Install places the installed bundle.
+// installedDir is where Live.Edit places the installed bundle.
 func (e *Engine) installedDir() string {
 	return filepath.Join(e.store.DefinitionsDir(), InstalledBundle)
-}
-
-// installedSource returns the installed bundle, or nil if nothing is
-// installed. A folder there without a bundle.yaml is an error.
-func (e *Engine) installedSource() (bundle.Source, error) {
-	dir := e.installedDir()
-	_, err := os.Stat(filepath.Join(dir, "bundle.yaml"))
-	switch {
-	case err == nil:
-		return bundle.Dir(dir), nil
-	case !errors.Is(err, fs.ErrNotExist):
-		return nil, err
-	}
-	if _, err := os.Stat(dir); err == nil {
-		return nil, fmt.Errorf("classify: %s has no bundle.yaml; it holds the bundle Define writes, so restore it or remove the folder", dir)
-	}
-	return nil, nil
 }
 
 // apply builds a snapshot from the live catalog, unless the current

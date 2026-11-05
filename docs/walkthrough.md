@@ -67,8 +67,8 @@ acme: adds 2 types, 1 classifiers, 1 signatures
   ok   gadget (primary text)
 ```
 
-(`Engine.Check`; the CLI loads the bundle with `bundle.Load` and calls
-`Engine.CheckModules` with every module in it, or just `acme#acme`'s.) The module compiled, its types fit the catalogue, and the
+(`Engine.Check`; the CLI loads the bundle with `bundle.Load` and checks
+every module in it together.) The module compiled, its types fit the catalogue, and the
 tests passed against the snapshot that installing it would produce. Nothing
 was installed.
 
@@ -100,9 +100,10 @@ old.wdg: acme.widget (validated)
     candidate: signature acme:magic matched 7 bytes at offset 0
 ```
 
-(`Engine.Define`.) The module is added to the workdir's installed bundle as
-`/tmp/wd/definitions/classify.installed/acme.star`, with its entry written
-into that bundle's `bundle.yaml`, and swapped in atomically. On the second classification only the new
+(`Engine.Define`.) `bundle.Live.Edit` adds the module to the workdir's
+installed bundle as `/tmp/wd/definitions/classify.installed/acme.star`,
+with its entry in that bundle's `bundle.yaml`, and it is swapped in
+atomically. On the second classification only the new
 `widget` classifier ran: every other classifier's output for these files
 came from the cache. Another process using the same workdir sees the module
 after `Refresh` (or automatically with `WithAutoRefresh`), and

@@ -38,6 +38,6 @@ func FuzzDefineNeverPanics(f *testing.F) {
 		f.Fatal(err)
 	}
 	f.Fuzz(func(t *testing.T, src string) {
-		e.Check(context.Background(), "fuzz", []byte(src))
+		e.Check(context.Background(), map[string][]byte{"fuzz": []byte(src)})
 	})
 }

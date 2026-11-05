@@ -36,8 +36,6 @@ test("legacy", data = "WIDGET: 0\n", anomalies = ["acme.legacy"])
 test("gadget", data = "GADGET: 2\n", absent = ["acme.widget"])
 ```
 
-A leading docstring becomes `CheckReport.Doc`.
-
 ## Bundles
 
 Modules are loaded from bundles only (foundation-kit's
@@ -115,26 +113,25 @@ reads go through the node's read budget.
 ## Lifecycle
 
 ```go
-rep, err := e.Check(ctx, "acme", src)          // compile, validate, run tests; installs nothing
-prev, err := e.Preview(ctx, "acme", src)       // + diff classifications of known files
-rep, err = e.Define(ctx, "acme", src)          // + install into the workdir bundle, only if tests pass
+mods := map[string][]byte{"acme": src}        // module name -> Starlark source
+rep, err := e.Check(ctx, mods)                 // compile, validate, run tests; installs nothing
+prev, err := e.Preview(ctx, mods)              // + diff classifications of known files
+rep, err = e.Define(ctx, mods)                 // + install into the workdir bundle, only if tests pass
 err = e.Remove(ctx, "acme")                    // uninstall (restores a replaced built-in)
 changed, err := e.Refresh(ctx)                 // reload bundles: other processes' changes
 results, err := e.Test(ctx)                    // run every installed module's tests
 ```
 
-`CheckModules`, `PreviewModules` and `DefineModules` take several
-`ModuleSource{Name, Source}` values and treat them as one change: they are
-validated and tested together, so they may use each other's types, and
-`DefineModules` installs all of them in one `Live.Install` or none. The
-single-module methods call them with one module. The CLI's `check`,
-`preview` and `define` load a bundle and pass its modules this way.
+`Check`, `Preview` and `Define` treat every module given as one change:
+they are validated and tested together, so they may use each other's types,
+and `Define` installs all of them in one `Live.Edit` or none. The CLI's
+`check`, `preview` and `define` load a bundle and pass all its modules.
 
-- **Validation** (all of `Check`, `Preview` and `Define`): the candidate installed bundle loads through `bundle.Load` like any other (so a name clash with a `WithSources` module is rejected); the module compiles; every type it references exists in the resulting catalogue; the catalogue stays acyclic and namespace-consistent; classifier IDs are unique; signatures reference known types.
-- **`CheckReport`** lists added, changed and removed types (with several modules, each type under the module that declares it), the module's classifiers, its signature count, and each test's outcome (primary, types, anomalies, failures).
-- **`Define`** returns a `*CheckError` carrying every module's report (`Reports`) when any test fails, and installs nothing. Otherwise it rewrites the installed bundle (`<name>.star` plus its entry in that bundle's `bundle.yaml`) and installs it with `bundle.Live.Install`, which validates the reload and rolls back on failure, then swaps the snapshot; calls in flight keep theirs. Re-defining a name replaces it; defining a built-in's name replaces the built-in. If another process changes the installed bundle while the tests run, `Define` starts again on the new state (up to three times). There is no lock between processes, so two `Define` calls racing in the instant before installing can still lose one module.
-- **`Remove`** rewrites the installed bundle without the module, or uninstalls the bundle when it was the last one. Modules from `classify.builtin` or a `WithSources` bundle can't be removed.
-- **`Preview`** returns a report per module in `PreviewReport.Checks`, and classifies each given source, or with none up to `PreviewLimit` (500) files the engine has classified before that are unchanged on disk, under the current and the candidate snapshot. It returns the changes: primary before/after, added and removed types and anomaly codes.
+- **Validation** (all of `Check`, `Preview` and `Define`): the candidate is built by making the same `Live.Edit` that `Define` would make, on a copy of the installed bundle in a temporary folder, so it loads through `bundle.Live` like any other bundle (so a name clash with a `WithSources` module is rejected); the module compiles; every type it references exists in the resulting catalogue; the catalogue stays acyclic and namespace-consistent; classifier IDs are unique; signatures reference known types.
+- **`CheckReport`** covers the whole change: the module names, which of them replace existing modules, the added, changed and removed types, the classifiers, the signature count, and each test's outcome (primary, types, anomalies, failures).
+- **`Define`** returns a `*CheckError` carrying the report when any test fails, and installs nothing. Otherwise `bundle.Live.Edit` writes each module as `<name>.star` into the installed bundle, with its entry in that bundle's `bundle.yaml`, and installs it, validating the reload and rolling back on failure; then the snapshot is swapped, and calls in flight keep theirs. Re-defining a name replaces it; defining a built-in's name replaces the built-in. `Edit` reads the installed bundle when it installs, so a module another process installed while the tests ran is kept. There is no lock between processes, so two processes changing the installed bundle at the same instant can still lose one change.
+- **`Remove`** drops the module from the installed bundle with `Live.Edit`, which uninstalls the bundle when it was the last one. Modules from `classify.builtin` or a `WithSources` bundle can't be removed.
+- **`Preview`** returns the check report in `PreviewReport.Check`, and classifies each given source, or with none up to `PreviewLimit` (500) files the engine has classified before that are unchanged on disk, under the current and the candidate snapshot. It returns the changes: primary before/after, added and removed types and anomaly codes.
 
 Cached results are keyed by classifier revision, so after `Define` only the
 new or changed classifiers run on content already seen.

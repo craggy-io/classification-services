@@ -36,7 +36,7 @@ reads definition files.
 - **Kinds live next to their types:** `definitions.ModuleKind` and `definitions.Compile`, `signatures.CyberChefKind` and `signatures.CompileCyberChef`. Both kinds are global. Compilers have no side effects and keep no caches: `bundle.Live` reuses compiled values across reloads.
 - **Built-ins:** `defs/` is the embedded bundle `classify.builtin`. A new built-in file needs its entry in `defs/bundle.yaml`.
 - **Importers:** `classify.WithSources(...bundle.Source)`, added with no override, so a name clash is `bundle.id_conflict`.
-- **Runtime installs:** `Define`/`Remove` rewrite the one bundle `classify.installed` under `workdir/definitions/` (files and `bundle.yaml`) and call `Live.Install`/`Uninstall`; a `BundleOverride` lets it replace built-ins. `Refresh` is `Live.Reload`.
+- **Runtime installs:** `Define`/`Remove` change the one bundle `classify.installed` under `workdir/definitions/` with `Live.Edit`, which writes its files and `bundle.yaml`; `Check`/`Preview` make the same `Edit` on a temporary copy; a `BundleOverride` lets it replace built-ins. `Refresh` is `Live.Reload`.
 
 ## Adding a format
 
