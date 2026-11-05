@@ -27,6 +27,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/craggy-io/foundation-kit/fsx"
 )
 
 // Store is a workdir. It holds no open handles, so it needs no Close.
@@ -274,43 +276,17 @@ func removeEmptyDirs(root string) {
 
 // --- atomic writes ---
 
-func writeTemp(path string, data []byte) (string, error) {
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return "", err
-	}
-	tmp, err := os.CreateTemp(filepath.Dir(path), ".tmp-*")
-	if err != nil {
-		return "", err
-	}
-	name := tmp.Name()
-	if _, err := tmp.Write(data); err != nil {
-		tmp.Close()
-		os.Remove(name)
-		return "", err
-	}
-	if err := tmp.Close(); err != nil {
-		os.Remove(name)
-		return "", err
-	}
-	return name, nil
-}
+// Cache files keep mode 0600, which os.CreateTemp gave them before fsx.
+const filePerm = 0o600
 
 // WriteImmutable writes path once. An existing entry is left alone, and
-// losing a rename race to another writer is success: entries for the same
-// key have the same meaning.
+// losing a race to another writer is success: entries for the same key
+// have the same meaning.
 func WriteImmutable(path string, data []byte) error {
-	if _, err := os.Stat(path); err == nil {
-		return nil
-	}
-	tmp, err := writeTemp(path, data)
-	if err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
-	if err := os.Rename(tmp, path); err != nil {
-		os.Remove(tmp)
-		if _, serr := os.Stat(path); serr == nil {
-			return nil
-		}
+	if err := fsx.WriteNew(path, data, filePerm); err != nil && !errors.Is(err, fs.ErrExist) {
 		return err
 	}
 	return nil
@@ -318,18 +294,8 @@ func WriteImmutable(path string, data []byte) error {
 
 // ReplaceFile atomically replaces path's contents.
 func ReplaceFile(path string, data []byte) error {
-	tmp, err := writeTemp(path, data)
-	if err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
-	if err := os.Rename(tmp, path); err != nil {
-		// Some Windows filesystems refuse to rename over an open file;
-		// retry after removing the destination.
-		os.Remove(path)
-		if err2 := os.Rename(tmp, path); err2 != nil {
-			os.Remove(tmp)
-			return err2
-		}
-	}
-	return nil
+	return fsx.WriteFile(path, data, filePerm)
 }
