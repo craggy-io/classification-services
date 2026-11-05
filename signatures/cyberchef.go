@@ -1,11 +1,37 @@
 package signatures
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
+	"io/fs"
+
+	"github.com/craggy-io/foundation-kit/bundle"
+	"github.com/craggy-io/foundation-kit/kind"
 
 	"github.com/craggy-io/classification-services/evidence"
 )
+
+// CyberChefKind is the bundle kind of a CyberChef signature set: a JSON file
+// in the CyberChefFile format, compiled into its rules. It is global, so
+// sets are named by contribution ID alone.
+var CyberChefKind = kind.New[[]Rule]("classify.cyberchef", 1, kind.Global())
+
+// CodeCyberChefInvalid is the diagnostic code for a set that does not parse.
+const CodeCyberChefInvalid bundle.Code = "classify.cyberchef_invalid"
+
+// CompileCyberChef is CyberChefKind's bundle compiler. It parses the file
+// with ParseCyberChef, using the contribution ID as the rules' module.
+func CompileCyberChef(_ context.Context, c bundle.Contribution) (bundle.Compiled[[]Rule], []bundle.Diagnostic) {
+	data, err := fs.ReadFile(c.Files, c.Path)
+	if err == nil {
+		var rules []Rule
+		if rules, _, err = ParseCyberChef(data, c.Ref.ID); err == nil {
+			return bundle.Compiled[[]Rule]{Value: rules}, nil
+		}
+	}
+	return bundle.Compiled[[]Rule]{}, []bundle.Diagnostic{{Code: CodeCyberChefInvalid, Path: c.Path, Message: err.Error()}}
+}
 
 // CyberChefFile is the imported CyberChef FileSignatures set (Apache-2.0),
 // with each rule targeting a type in this module's catalogue.

@@ -14,10 +14,19 @@ go install github.com/craggy-io/classification-services/cmd/craggy-classify@late
 | --- | --- |
 | `craggy-classify [classify] PATH...` | Classify files; directories are walked. `--depth quick\|standard\|deep`, `--tree` (list children), `--explain TYPE`, `--fail-on info\|warning\|critical`. |
 | `types [PREFIX]` | List catalogue types: parents, extensions, MIME type. |
-| `check FILE.star` | Validate a module and run its tests; exit 1 if any fail. |
-| `preview FILE.star [PATH...]` | Show what installing the module would change (default: known files). |
-| `define FILE.star` | Test and install a module (`--name` overrides the file name). |
+| `check BUNDLE[#ID]` | Validate the bundle's modules and run their tests together; exit 1 if any fail. |
+| `preview BUNDLE[#ID] [PATH...]` | Show what installing the modules would change (default: known files). |
+| `define BUNDLE[#ID]` | Test the modules and, only if every test passes, install them in one step into the workdir's installed bundle. |
 | `remove NAME` | Uninstall a module. |
+
+`BUNDLE` is a directory with a written `bundle.yaml` listing its modules as
+`classify.module@1` contributions ([bundles](definitions.md#bundles)); a
+folder without one is an error, and single `.star` files are not accepted.
+Module names are contribution IDs, never file names. Without `#ID` every
+module in the bundle is used; `BUNDLE#ID` uses only that contribution. The
+bundle is loaded with `bundle.Load`, so every problem in it is reported with
+its file and line. Other kinds in the bundle (such as `classify.cyberchef@1`)
+are compiled but not installed.
 | `definitions` | List installed modules. |
 | `test` | Run every installed module's inline tests. |
 | `maintain` | Prune the cache. |

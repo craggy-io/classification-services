@@ -4,9 +4,7 @@ import (
 	"context"
 	"io"
 
-	"github.com/craggy-io/classification-services/defs"
 	"github.com/craggy-io/classification-services/probes"
-	"github.com/craggy-io/classification-services/signatures"
 )
 
 // builtinClassifiers adapts every built-in probe to a native classifier.
@@ -52,9 +50,4 @@ func (p probeInput) Reader() io.ReaderAt               { return p.in.r }
 func (p probeInput) Limits() probes.Limits {
 	l := p.in.limits
 	return probes.Limits{MaxBytes: l.MaxBytes, MaxDerivedBytes: l.MaxDerivedBytes, MaxExpansion: l.MaxExpansion}
-}
-
-func builtinSignatures() ([]signatures.Rule, error) {
-	rules, _, err := signatures.ParseCyberChef(defs.CyberChef(), "cyberchef")
-	return rules, err
 }

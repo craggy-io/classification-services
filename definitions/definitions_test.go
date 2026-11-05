@@ -1,18 +1,18 @@
 package definitions_test
 
 import (
+	"context"
+	"errors"
 	"strings"
 	"testing"
 	"testing/fstest"
 
+	"github.com/craggy-io/foundation-kit/bundle"
+	"github.com/craggy-io/foundation-kit/bundle/bundletest"
+
 	"github.com/craggy-io/classification-services/definitions"
 	"github.com/craggy-io/classification-services/evidence"
 )
-
-type memCache map[string][]byte
-
-func (m memCache) Program(h string) ([]byte, bool) { b, ok := m[h]; return b, ok }
-func (m memCache) PutProgram(h string, b []byte)   { m[h] = b }
 
 const src = `"""Widgets.
 
@@ -26,8 +26,7 @@ test("t", hex = "57 49", expect = ["acme.w"], anomalies = ["x"])
 `
 
 func TestLoadDeclarations(t *testing.T) {
-	cache := memCache{}
-	m, err := definitions.Load("acme", []byte(src), cache)
+	m, err := definitions.Load(context.Background(), "acme", []byte(src))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -45,12 +44,6 @@ func TestLoadDeclarations(t *testing.T) {
 	if string(m.Tests[0].Data) != "WI" {
 		t.Fatalf("test data = %q", m.Tests[0].Data)
 	}
-	if len(cache) != 1 {
-		t.Fatal("compiled program not cached")
-	}
-	if m2, err := definitions.Load("acme", []byte(src), cache); err != nil || len(m2.Types) != 1 {
-		t.Fatalf("load from compiled cache: %v", err)
-	}
 }
 
 func TestLoadErrors(t *testing.T) {
@@ -59,20 +52,70 @@ func TestLoadErrors(t *testing.T) {
 		`classifier("x")`, `test("t", hex = "zz")`, `test("t", hex = "00", data = "x")`, `open("/etc/passwd")`,
 		`load("x.star", "y")`, `signature("a.b", at(0, "00"), color = "red")`,
 	} {
-		if _, err := definitions.Load("bad", []byte(bad), nil); err == nil {
+		if _, err := definitions.Load(context.Background(), "bad", []byte(bad)); err == nil {
 			t.Errorf("accepted %q", bad)
 		}
 	}
-	for _, name := range []string{"", "Upper", "../x", "a/b", strings.Repeat("a", 200)} {
+	for _, name := range []string{"", "Upper", "../x", "a/b", "trailing-", strings.Repeat("a", 200)} {
 		if definitions.ValidName(name) {
 			t.Errorf("ValidName(%q)", name)
 		}
 	}
 }
 
-func TestLoadFSRejectsDuplicateNames(t *testing.T) {
-	fsys := fstest.MapFS{"a/m.star": {Data: []byte(`type("x.a")`)}, "b/m.star": {Data: []byte(`type("x.b")`)}}
-	if _, err := definitions.LoadFS(fsys, nil); err == nil || !strings.Contains(err.Error(), "defined by both") {
+const manifest = `apiVersion: craggy.io/bundle/v1
+metadata: {id: test.defs, version: 1.0.0}
+contributions:
+  - {id: widgets, kind: classify.module@1, path: mods/w.star}
+  - {id: broken, kind: classify.module@1, path: mods/broken.star}
+`
+
+func compiler() bundle.AnyCompiler {
+	return bundle.Compile(definitions.ModuleKind, definitions.Compile)
+}
+
+func TestCompileNamesModulesByContributionID(t *testing.T) {
+	fsys := fstest.MapFS{
+		"bundle.yaml":      {Data: []byte(strings.Replace(manifest, "  - {id: broken, kind: classify.module@1, path: mods/broken.star}\n", "", 1))},
+		"mods/w.star":      {Data: []byte(src)},
+		"mods/unused.star": {Data: []byte("def (")}, // not listed, so not loaded
+	}
+	cat := bundletest.Load(t, fsys, compiler())
+	def, ok := bundle.Lookup(cat, definitions.ModuleKind, "widgets")
+	if !ok || def.Value.Name != "widgets" || def.Value.Classifiers[0].Module != "widgets" || def.Value.Signatures[0].ID != "widgets:wi" {
+		t.Fatalf("widgets = %+v, %v", def.Value, ok)
+	}
+}
+
+func TestCompileErrorsAreDiagnosticsInTheFile(t *testing.T) {
+	fsys := fstest.MapFS{
+		"bundle.yaml":      {Data: []byte(manifest)},
+		"mods/w.star":      {Data: []byte(src)},
+		"mods/broken.star": {Data: []byte("type(\"a.b\")\n\nsignature(\"a.b\", \"notapattern\")\n")},
+	}
+	_, err := bundle.Load(context.Background(), bundle.Options{Sources: []bundle.Source{bundle.Embedded("test", fsys)}, Compilers: []bundle.AnyCompiler{compiler()}})
+	var le *bundle.LoadError
+	if !errors.As(err, &le) || len(le.Diagnostics) != 1 {
 		t.Fatalf("err = %v", err)
 	}
+	d := le.Diagnostics[0]
+	if d.Code != definitions.CodeInvalid || d.Contribution != "broken" || d.Path != "mods/broken.star" || d.Line != 3 || !strings.Contains(d.Message, "patterns must come from at()") {
+		t.Fatalf("diagnostic = %+v", d)
+	}
+
+	// Every resolve error is reported, each at its own line.
+	fsys["mods/broken.star"] = &fstest.MapFile{Data: []byte("x = nope\ny = alsonope\n")}
+	_, err = bundle.Load(context.Background(), bundle.Options{Sources: []bundle.Source{bundle.Embedded("test", fsys)}, Compilers: []bundle.AnyCompiler{compiler()}})
+	if !errors.As(err, &le) || len(le.Diagnostics) != 2 || le.Diagnostics[0].Line != 1 || le.Diagnostics[1].Line != 2 {
+		t.Fatalf("err = %v (%+v)", err, le)
+	}
+}
+
+func TestCompileRejectsInvalidModuleNames(t *testing.T) {
+	fsys := fstest.MapFS{
+		"bundle.yaml": {Data: []byte("apiVersion: craggy.io/bundle/v1\nmetadata: {id: test.defs, version: 1.0.0}\ncontributions:\n  - {id: Upper, kind: classify.module@1, path: u.star}\n")},
+		"u.star":      {Data: []byte(`type("x.a")`)},
+	}
+	_, err := bundle.Load(context.Background(), bundle.Options{Sources: []bundle.Source{bundle.Embedded("test", fsys)}, Compilers: []bundle.AnyCompiler{compiler()}})
+	bundletest.RequireCode(t, err, definitions.CodeInvalid)
 }

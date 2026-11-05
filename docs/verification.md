@@ -26,11 +26,11 @@ go test ./classify -run xxx -bench .
 | Every probe family, including bombs, traversal, macros, PDF obfuscation, PEM/X.509, JWT | `probes/probes_test.go` |
 | Catalogue rules, signature matching and the CyberChef set, module loading and errors, paged budgets, cache immutability and maintenance | `catalog`, `signatures`, `definitions`, `internal/*` |
 | Engine: roots, JSON/text, ZIP/JAR/APK with children, Quick depth, rejection, explain, shared DAG nodes, Deep speculation, sources, anomalies (including name hints and cached-root isolation), limits, nesting, bombs, concurrency, cache equality, cancellation, observer events | `classify/classify_test.go` |
-| Definitions lifecycle: check, define, persist, remove, failing tests, invalid modules, cache reuse across engines, only-new-classifier reruns, in-flight snapshot stability, refresh across engines, preview, ctx primitives, step limits, WithDefinitions, built-in module tests, batch, directory walk, maintenance | `classify/define_test.go` |
+| Definitions lifecycle: check, define, persist, remove, failing tests, invalid modules, cache reuse across engines, only-new-classifier reruns, in-flight snapshot stability, refresh across engines, preview, ctx primitives, step limits, WithSources and id conflicts, the installed bundle on disk, built-in module tests, batch, directory walk, maintenance | `classify/define_test.go` |
 | Built-in catalogue conventions | `classify/catalogue_test.go` |
 | CLI commands and exit codes | `cmd/craggy-classify/main_test.go` |
 | Golden results for 34 generated files; two engines sharing one workdir concurrently | `integration/corpus_test.go` |
-| Every file in `samples/` classifies as its README says, and `widgets.star` passes its tests | `integration/samples_test.go` |
+| Every file in `samples/` classifies as its README says, and the `widgets` bundle's module passes its tests | `integration/samples_test.go` |
 | Adapter: classify an artifact, publish report and typed tables, sql-v1 query, lineage records, idempotent republish, observability bridge | `adapters/artifactsvc/artifactsvc_test.go` |
 
 Test inputs are generated in code (`internal/testkit`). The only binary files

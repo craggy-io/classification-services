@@ -11,7 +11,7 @@ AGENTS.md is read. Start with the [walkthrough](docs/walkthrough.md).
 | Need | Package and contract |
 | --- | --- |
 | Classify content, read results, explain, batch, install definitions | [`classify`](docs/classify.md) |
-| Write a Starlark definition (types, signatures, classifiers, tests) | [`definitions`](docs/definitions.md) |
+| Write a Starlark definition (types, signatures, classifiers, tests), or a definitions bundle | [`definitions`](docs/definitions.md) |
 | Type names, parents, `IsA` | [`catalog`](docs/catalog.md) |
 | Byte signatures | [`signatures`](docs/signatures.md) |
 | A new structural parser or native recogniser | [`views`, `probes`](docs/recognisers.md) |
@@ -21,17 +21,30 @@ AGENTS.md is read. Start with the [walkthrough](docs/walkthrough.md).
 Dependencies run one way: `evidence` ← `catalog`, `signatures`, `views`;
 `views` ← `probes`; `views`, `catalog`, `signatures` ← `definitions`; all ←
 `classify` ← `cmd`. `probes` never imports `classify`, and `definitions` never
-imports `probes`. The core module imports only the standard library and
-`go.starlark.net`. It must never import artifact-services: integration
-belongs in `adapters/`.
+imports `probes`. The core module imports only the standard library,
+`go.starlark.net` and `github.com/craggy-io/foundation-kit/...` (bundle
+loading is the shared path). It keeps its own Starlark evaluation and does
+not use script-services. It must never import artifact-services: integration
+belongs in `adapters/`. `arch_test.go` enforces these rules.
+
+## Loading definitions
+
+Definitions load only through foundation-kit's `bundle` package; nothing else
+reads definition files.
+
+- **Every folder of definitions is a bundle with a `bundle.yaml`** listing each module (`classify.module@1`, contribution `id` = module name) and any CyberChef set (`classify.cyberchef@1`). Never generate a manifest or derive a module name from a file name; an unlisted file isn't loaded.
+- **Kinds live next to their types:** `definitions.ModuleKind` and `definitions.Compile`, `signatures.CyberChefKind` and `signatures.CompileCyberChef`. Both kinds are global. Compilers have no side effects and keep no caches: `bundle.Live` reuses compiled values across reloads.
+- **Built-ins:** `defs/` is the embedded bundle `classify.builtin`. A new built-in file needs its entry in `defs/bundle.yaml`.
+- **Importers:** `classify.WithSources(...bundle.Source)`, added with no override, so a name clash is `bundle.id_conflict`.
+- **Runtime installs:** `Define`/`Remove` rewrite the one bundle `classify.installed` under `workdir/definitions/` (files and `bundle.yaml`) and call `Live.Install`/`Uninstall`; a `BundleOverride` lets it replace built-ins. `Refresh` is `Live.Reload`.
 
 ## Adding a format
 
 Prefer, in order:
 
-1. **A Starlark module** when the logic fits the `ctx` API. Put built-ins in `defs/classifiers/` with `test()` cases. Runtime users call `Check`, then `Preview`, then `Define`.
+1. **A Starlark module** when the logic fits the `ctx` API. Put built-ins in `defs/classifiers/` with `test()` cases, and list the file in `defs/bundle.yaml`. Runtime users call `Check`, then `Preview`, then `Define`.
 2. **A view plus a probe** when parsing needs Go: add `views/<format>.go` (standard library only, bounded reads, `Describe()` for Starlark) and register it in `views.go`; add the probe to `probes/` and to `Builtins()`; bump `probes.Revision`.
-3. **Types** go in `defs/types/<namespace>.star` under an existing namespace. A new namespace needs an abstract namespace type. Every concrete type needs a description.
+3. **Types** go in `defs/types/<namespace>.star` under an existing namespace (a new file also needs its `defs/bundle.yaml` entry). A new namespace needs an abstract namespace type. Every concrete type needs a description.
 
 Then add tests: a view test, a probe test, and a sample in
 `integration/corpus_test.go` (regenerate with `go test ./integration -update`

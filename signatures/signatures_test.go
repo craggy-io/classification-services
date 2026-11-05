@@ -1,11 +1,36 @@
 package signatures_test
 
 import (
+	"io/fs"
 	"testing"
 
+	"github.com/craggy-io/foundation-kit/bundle"
+	"github.com/craggy-io/foundation-kit/bundle/bundletest"
+
+	"github.com/craggy-io/classification-services/definitions"
 	"github.com/craggy-io/classification-services/defs"
 	"github.com/craggy-io/classification-services/signatures"
 )
+
+func cyberchef(t *testing.T) []byte {
+	t.Helper()
+	b, err := fs.ReadFile(defs.FS(), "signatures/cyberchef.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return b
+}
+
+func TestCyberChefKindLoadsFromTheBuiltinBundle(t *testing.T) {
+	cat := bundletest.Load(t, defs.FS(),
+		bundle.Compile(definitions.ModuleKind, definitions.Compile),
+		bundle.Compile(signatures.CyberChefKind, signatures.CompileCyberChef))
+	def, ok := bundle.Lookup(cat, signatures.CyberChefKind, "cyberchef")
+	want, _, err := signatures.ParseCyberChef(cyberchef(t), "cyberchef")
+	if err != nil || !ok || len(def.Value) != len(want) || def.Owner.ID != defs.ID {
+		t.Fatalf("cyberchef = %d rules (want %d), owner %s, %v, %v", len(def.Value), len(want), def.Owner.ID, ok, err)
+	}
+}
 
 func TestHexAndMatcher(t *testing.T) {
 	zip, err := signatures.Hex(0, "50 4b ?? 04")
@@ -38,7 +63,7 @@ func TestHexAndMatcher(t *testing.T) {
 }
 
 func TestCyberChefSet(t *testing.T) {
-	rules, file, err := signatures.ParseCyberChef(defs.CyberChef(), "cyberchef")
+	rules, file, err := signatures.ParseCyberChef(cyberchef(t), "cyberchef")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -5,7 +5,8 @@
 // DAG, and anomalies (polyglots, path traversal, extension mismatches,
 // active PDF content) are reported alongside types.
 //
-// Built-in definitions are embedded. New definitions, written in Starlark,
+// Definitions are Starlark modules in bundles: folders with a bundle.yaml
+// that lists each module. The built-in bundle is embedded. New definitions
 // can be checked against their inline tests, previewed against known
 // content and installed at runtime without restarting. Results are cached in
 // a caller-supplied working folder that several processes may share.
@@ -30,6 +31,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/craggy-io/foundation-kit/bundle"
+
 	"github.com/craggy-io/classification-services/catalog"
 	"github.com/craggy-io/classification-services/definitions"
 	"github.com/craggy-io/classification-services/defs"
@@ -42,6 +45,15 @@ import (
 // ErrClosed is returned by operations on a closed Engine.
 var ErrClosed = errors.New("classify: engine closed")
 
+// Bundle IDs the engine knows. The built-in definitions are the embedded
+// bundle BuiltinBundle. Modules installed with Define live in one bundle,
+// InstalledBundle, at workdir/definitions/classify.installed, which
+// overrides the built-ins, so installing a built-in's name replaces it.
+const (
+	BuiltinBundle   = defs.ID
+	InstalledBundle = "classify.installed"
+)
+
 // Engine classifies content against a snapshot of definitions. It is safe
 // for concurrent use.
 type Engine struct {
@@ -49,13 +61,10 @@ type Engine struct {
 	cfg    engineConfig
 	limits Limits
 
-	snap    atomic.Pointer[snapshot]
-	mu      sync.Mutex                     // serialises snapshot rebuilds
-	base    map[string]*definitions.Module // built-in and WithDefinitions modules
-	natives []Classifier
-	sigs    []signatures.Rule // built-in CyberChef rules
-
-	persisted   string       // fingerprint of definitions/ at the last load
+	live        *bundle.Live
+	snap        atomic.Pointer[snapshot]
+	mu          sync.Mutex // serialises Define, Remove and Refresh
+	natives     []Classifier
 	lastRefresh atomic.Int64 // unix nanos
 
 	flight flight.Group[outcome]
@@ -68,9 +77,17 @@ type Engine struct {
 
 const lruCapacity = 256
 
-// Open loads the built-in definitions, any WithDefinitions modules and the
-// modules persisted under workdir/definitions, and prepares the cache.
-// workdir is required; it is created if missing.
+// compilers are the kinds definition bundles may contain.
+var compilers = []bundle.AnyCompiler{
+	bundle.Compile(definitions.ModuleKind, definitions.Compile),
+	bundle.Compile(signatures.CyberChefKind, signatures.CompileCyberChef),
+}
+
+var builtinSource = bundle.Embedded(defs.ID, defs.FS())
+
+// Open loads the built-in bundle, any WithSources bundles and the installed
+// bundle under workdir/definitions, and prepares the cache. workdir is
+// required; it is created if missing.
 func Open(ctx context.Context, workdir string, opts ...Option) (*Engine, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -85,66 +102,86 @@ func Open(ctx context.Context, workdir string, opts ...Option) (*Engine, error) 
 	if err != nil {
 		return nil, err
 	}
-	e := &Engine{store: st, cfg: cfg, limits: cfg.limits.withDefaults(), base: map[string]*definitions.Module{}, lru: map[string]*Result{}}
+	e := &Engine{store: st, cfg: cfg, limits: cfg.limits.withDefaults(), lru: map[string]*Result{}}
 	sp := startSpan(cfg.observer, nil, "open", st.Root())
-	if cfg.builtins {
-		mods, err := definitions.LoadFS(defs.FS(), st)
-		if err != nil {
-			sp.end(err)
-			return nil, fmt.Errorf("classify: loading built-in definitions: %w", err)
-		}
-		for _, m := range mods {
-			e.base[m.Name] = m
-		}
-		if e.sigs, err = builtinSignatures(); err != nil {
-			sp.end(err)
-			return nil, err
-		}
-	}
-	for _, fsys := range cfg.defFS {
-		mods, err := definitions.LoadFS(fsys, st)
-		if err != nil {
-			sp.end(err)
-			return nil, err
-		}
-		for _, m := range mods {
-			e.base[m.Name] = m
-		}
-	}
 	e.natives = append(e.natives, cfg.classifiers...)
 	if cfg.builtins {
 		e.natives = append(e.natives, builtinClassifiers()...)
 	}
-	if err := e.reload(); err != nil {
+	e.live, err = bundle.NewLive(ctx, func(context.Context) (bundle.Options, error) {
+		installed, err := e.installedSource()
+		if err != nil {
+			return bundle.Options{}, err
+		}
+		return e.options(installed), nil
+	})
+	if err != nil {
+		err = fmt.Errorf("classify: loading definitions: %w", err)
 		sp.end(err)
 		return nil, err
 	}
+	if _, err := e.apply(); err != nil {
+		sp.end(err)
+		return nil, err
+	}
+	e.lastRefresh.Store(time.Now().UnixNano())
 	sp.end(nil)
 	return e, nil
 }
 
-// reload rebuilds the snapshot from base modules plus persisted ones.
-// Callers hold e.mu (or are Open).
-func (e *Engine) reload() error {
-	persisted, fp, err := e.loadPersisted()
+// options lists the bundles to load, with installed as the installed bundle
+// (nil when there is none). The installed bundle overrides the built-ins.
+func (e *Engine) options(installed bundle.Source) bundle.Options {
+	o := bundle.Options{Compilers: compilers}
+	if e.cfg.builtins {
+		o.Sources = append(o.Sources, builtinSource)
+	}
+	o.Sources = append(o.Sources, e.cfg.sources...)
+	if installed != nil {
+		o.Sources = append(o.Sources, installed)
+		if e.cfg.builtins {
+			o.BundleOverrides = []bundle.BundleOverride{{Target: BuiltinBundle, Replacement: InstalledBundle}}
+		}
+	}
+	return o
+}
+
+// installedDir is where Live.Install places the installed bundle.
+func (e *Engine) installedDir() string {
+	return filepath.Join(e.store.DefinitionsDir(), InstalledBundle)
+}
+
+// installedSource returns the installed bundle, or nil if nothing is
+// installed. A folder there without a bundle.yaml is an error.
+func (e *Engine) installedSource() (bundle.Source, error) {
+	dir := e.installedDir()
+	_, err := os.Stat(filepath.Join(dir, "bundle.yaml"))
+	switch {
+	case err == nil:
+		return bundle.Dir(dir), nil
+	case !errors.Is(err, fs.ErrNotExist):
+		return nil, err
+	}
+	if _, err := os.Stat(dir); err == nil {
+		return nil, fmt.Errorf("classify: %s has no bundle.yaml; it holds the bundle Define writes, so restore it or remove the folder", dir)
+	}
+	return nil, nil
+}
+
+// apply builds a snapshot from the live catalog, unless the current
+// snapshot already reflects it, and installs it. It reports whether the
+// snapshot changed. Callers hold e.mu (or are Open).
+func (e *Engine) apply() (bool, error) {
+	cat := e.live.Catalog()
+	if cur := e.snap.Load(); cur != nil && cur.bundles == cat {
+		return false, nil
+	}
+	snap, err := newSnapshot(cat, e.natives)
 	if err != nil {
-		return err
-	}
-	effective := make(map[string]*definitions.Module, len(e.base)+len(persisted))
-	for n, m := range e.base {
-		effective[n] = m
-	}
-	for _, m := range persisted {
-		effective[m.Name] = m
-	}
-	snap, err := buildSnapshot(effective, e.natives, e.sigs)
-	if err != nil {
-		return err
+		return false, err
 	}
 	e.install(snap)
-	e.persisted = fp
-	e.lastRefresh.Store(time.Now().UnixNano())
-	return nil
+	return true, nil
 }
 
 func (e *Engine) install(s *snapshot) {
@@ -152,37 +189,6 @@ func (e *Engine) install(s *snapshot) {
 	e.lruMu.Lock()
 	e.lru, e.order = map[string]*Result{}, nil
 	e.lruMu.Unlock()
-}
-
-func (e *Engine) loadPersisted() ([]*definitions.Module, string, error) {
-	dir := e.store.DefinitionsDir()
-	ents, err := os.ReadDir(dir)
-	if errors.Is(err, fs.ErrNotExist) {
-		return nil, "", nil
-	}
-	if err != nil {
-		return nil, "", err
-	}
-	var mods []*definitions.Module
-	var fp []string
-	for _, ent := range ents {
-		name := ent.Name()
-		if ent.IsDir() || filepath.Ext(name) != ".star" {
-			continue
-		}
-		src, err := os.ReadFile(filepath.Join(dir, name))
-		if err != nil {
-			return nil, "", err
-		}
-		m, err := definitions.Load(name[:len(name)-len(".star")], src, e.store)
-		if err != nil {
-			return nil, "", fmt.Errorf("classify: persisted definition %s: %w", name, err)
-		}
-		mods = append(mods, m)
-		fp = append(fp, m.Name+"@"+m.SourceHash)
-	}
-	sort.Strings(fp)
-	return mods, fmt.Sprint(fp), nil
 }
 
 // Close releases the engine. It is idempotent. The workdir is kept.

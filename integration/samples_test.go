@@ -4,9 +4,13 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 
+	"github.com/craggy-io/foundation-kit/bundle"
+
 	"github.com/craggy-io/classification-services/classify"
+	"github.com/craggy-io/classification-services/definitions"
 )
 
 // The samples folder is documented in samples/README.md; keep the two in step.
@@ -25,7 +29,7 @@ func TestSamples(t *testing.T) {
 		"capture.pcap": {"network.pcap", nil}, "module.wasm": {"executable.wasm", nil},
 		"token.jwt": {"crypto.jwt", []string{"crypto.jwt-unsigned"}}, "encoded.b64": {"encoding.base64", nil},
 		"config.json": {"data.json", nil}, "run.sh": {"source.python", nil}, "notes.txt": {"text", nil},
-		"current.wdg": {"text", nil}, "legacy.wdg": {"text", nil}, "widgets.star": {"text", nil},
+		"current.wdg": {"text", nil}, "legacy.wdg": {"text", nil},
 		"README.md": {"text", nil},
 	}
 	e, err := classify.Open(ctx, t.TempDir())
@@ -33,6 +37,8 @@ func TestSamples(t *testing.T) {
 		t.Fatal(err)
 	}
 	ents, _ := os.ReadDir(dir)
+	// widgets/ is the sample definitions bundle, checked below.
+	ents = slices.DeleteFunc(ents, func(e os.DirEntry) bool { return e.IsDir() && e.Name() == "widgets" })
 	if len(ents) != len(want) {
 		t.Fatalf("samples has %d files, the test expects %d", len(ents), len(want))
 	}
@@ -63,10 +69,20 @@ func TestSamples(t *testing.T) {
 			t.Errorf("%s: primary %s anomalies %v; want %s with exactly %v", ent.Name(), r.Primary, codes, w.primary, w.anomalies)
 		}
 	}
-	src, _ := os.ReadFile(filepath.Join(dir, "widgets.star"))
-	rep, err := e.Check(ctx, "widgets", src)
+	cat, err := bundle.Load(ctx, bundle.Options{
+		Sources:   []bundle.Source{bundle.Dir(filepath.Join(dir, "widgets"))},
+		Compilers: []bundle.AnyCompiler{bundle.Compile(definitions.ModuleKind, definitions.Compile)},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	def, ok := bundle.Lookup(cat, definitions.ModuleKind, "acme")
+	if !ok {
+		t.Fatal("samples/widgets has no module acme")
+	}
+	rep, err := e.Check(ctx, def.Value.Name, def.Value.Source)
 	if err != nil || !rep.Passed() {
-		t.Fatalf("widgets.star: %+v %v", rep, err)
+		t.Fatalf("samples/widgets#acme: %+v %v", rep, err)
 	}
 	r, err := e.Classify(ctx, classify.File(filepath.Join(dir, "encoded.b64")), classify.WithDepth(classify.Deep))
 	if err != nil {

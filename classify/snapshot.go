@@ -9,6 +9,8 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/craggy-io/foundation-kit/bundle"
+
 	"github.com/craggy-io/classification-services/catalog"
 	"github.com/craggy-io/classification-services/definitions"
 	"github.com/craggy-io/classification-services/signatures"
@@ -69,7 +71,30 @@ type snapshot struct {
 	matcher     *signatures.Matcher
 	revision    string
 	modules     map[string]*definitions.Module // effective modules by name
+	owners      map[string]string              // module name -> owning bundle ID
 	tests       map[string][]definitions.Test
+	bundles     *bundle.Catalog // the definitions catalog this was built from
+}
+
+// newSnapshot builds a snapshot from a definitions catalog: every effective
+// module and CyberChef set in it, plus the native classifiers.
+func newSnapshot(cat *bundle.Catalog, natives []Classifier) (*snapshot, error) {
+	modules := map[string]*definitions.Module{}
+	owners := map[string]string{}
+	for _, d := range bundle.All(cat, definitions.ModuleKind) {
+		modules[d.Value.Name] = d.Value
+		owners[d.Value.Name] = d.Owner.ID
+	}
+	var sigs []signatures.Rule
+	for _, d := range bundle.All(cat, signatures.CyberChefKind) {
+		sigs = append(sigs, d.Value...)
+	}
+	snap, err := buildSnapshot(modules, natives, sigs)
+	if err != nil {
+		return nil, err
+	}
+	snap.owners, snap.bundles = owners, cat
+	return snap, nil
 }
 
 // intrinsicTypes are the roots the engine asserts itself.

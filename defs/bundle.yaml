@@ -1,0 +1,97 @@
+apiVersion: craggy.io/bundle/v1
+
+metadata:
+  id: classify.builtin
+  version: 1.0.0
+  title: Built-in classification definitions
+
+# Each module's contribution id is its module name. LICENSE and
+# PROVENANCE.md under signatures/ are support files for the CyberChef set.
+contributions:
+  - id: android
+    kind: classify.module@1
+    path: types/android.star
+
+  - id: archive
+    kind: classify.module@1
+    path: types/archive.star
+
+  - id: audio
+    kind: classify.module@1
+    path: types/audio.star
+
+  - id: charset
+    kind: classify.module@1
+    path: types/charset.star
+
+  - id: compression
+    kind: classify.module@1
+    path: types/compression.star
+
+  - id: crypto
+    kind: classify.module@1
+    path: types/crypto.star
+
+  - id: data
+    kind: classify.module@1
+    path: types/data.star
+
+  - id: disk
+    kind: classify.module@1
+    path: types/disk.star
+
+  - id: document
+    kind: classify.module@1
+    path: types/document.star
+
+  - id: encoding
+    kind: classify.module@1
+    path: types/encoding.star
+
+  - id: executable
+    kind: classify.module@1
+    path: types/executable.star
+
+  - id: font
+    kind: classify.module@1
+    path: types/font.star
+
+  - id: image
+    kind: classify.module@1
+    path: types/image.star
+
+  - id: network
+    kind: classify.module@1
+    path: types/network.star
+
+  - id: source
+    kind: classify.module@1
+    path: types/source.star
+
+  - id: system
+    kind: classify.module@1
+    path: types/system.star
+
+  - id: video
+    kind: classify.module@1
+    path: types/video.star
+
+  - id: crx
+    kind: classify.module@1
+    path: classifiers/crx.star
+
+  - id: java-archives
+    kind: classify.module@1
+    path: classifiers/java-archives.star
+
+  - id: wasm
+    kind: classify.module@1
+    path: classifiers/wasm.star
+
+  - id: extra
+    kind: classify.module@1
+    path: signatures/extra.star
+
+  - id: cyberchef
+    kind: classify.cyberchef@1
+    path: signatures/cyberchef.json

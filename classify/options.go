@@ -1,9 +1,10 @@
 package classify
 
 import (
-	"io/fs"
 	"runtime"
 	"time"
+
+	"github.com/craggy-io/foundation-kit/bundle"
 )
 
 // Limits bounds classification work. Zero fields take the defaults shown.
@@ -54,7 +55,7 @@ func (l Limits) withDefaults() Limits {
 
 type engineConfig struct {
 	builtins    bool
-	defFS       []fs.FS
+	sources     []bundle.Source
 	classifiers []Classifier
 	limits      Limits
 	observer    Observer
@@ -68,13 +69,18 @@ type Option func(*engineConfig)
 // The engine still declares the two roots, "bytes" and "text".
 func WithoutBuiltins() Option { return func(c *engineConfig) { c.builtins = false } }
 
-// WithDefinitions adds definition modules (*.star, recursively) shipped by
-// an importer. They load after the built-ins; a module with a built-in's
-// name replaces it.
-func WithDefinitions(fsys fs.FS) Option {
+// WithSources adds definition bundles shipped by an importer, such as
+// bundle.Dir or bundle.Embedded. Each one needs its own bundle.yaml listing
+// its modules (kind classify.module@1, contribution ID = module name) and
+// any CyberChef sets (classify.cyberchef@1); unlisted files are not
+// loaded. They load beside the built-ins with no override, so a module name
+// already defined elsewhere is a bundle.id_conflict error from Open.
+func WithSources(sources ...bundle.Source) Option {
 	return func(c *engineConfig) {
-		if fsys != nil {
-			c.defFS = append(c.defFS, fsys)
+		for _, s := range sources {
+			if s != nil {
+				c.sources = append(c.sources, s)
+			}
 		}
 	}
 }
@@ -95,7 +101,8 @@ func WithLimits(l Limits) Option { return func(c *engineConfig) { c.limits = l }
 func WithObserver(o Observer) Option { return func(c *engineConfig) { c.observer = o } }
 
 // WithAutoRefresh makes Classify pick up definitions another process
-// installed or removed in the workdir, checking at most once per interval.
+// installed or removed in the workdir, reloading the definition bundles at
+// most once per interval.
 // Without it, call Refresh explicitly.
 func WithAutoRefresh(interval time.Duration) Option {
 	return func(c *engineConfig) { c.refresh = interval }

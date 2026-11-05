@@ -164,7 +164,9 @@ func (p *printer) preview(rep *classify.PreviewReport) {
 		p.emit(rep)
 		return
 	}
-	p.check(rep.Check)
+	for _, c := range rep.Checks {
+		p.check(c)
+	}
 	fmt.Fprintf(p.w, "examined %d files, %d would change\n", rep.Examined, len(rep.Changes))
 	for _, c := range rep.Changes {
 		fmt.Fprintf(p.w, "  %s: %s -> %s", c.Name, c.PrimaryBefore, c.PrimaryAfter)

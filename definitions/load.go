@@ -15,6 +15,12 @@
 //	classifier("jar", produces = ["archive.jar"], requires = ["archive.zip"], run = _jar)
 //	test("manifest-only jar", hex = "504b0304...", expect = ["archive.jar"])
 //
+// Modules ship in bundles: a folder (or embedded file system) whose
+// bundle.yaml lists each module as a contribution of ModuleKind
+// (classify.module@1). The contribution ID is the module name and its path
+// the .star file; a folder without a bundle.yaml is not loaded. Compile is
+// the kind's compiler, which the classify engine passes to bundle.Load.
+//
 // Starlark is used for determinism and cacheability, not as a sandbox:
 // definitions are trusted code. Scripts get no file system or network
 // access, a step limit stops runaway loops, and every content read goes
@@ -26,15 +32,19 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io/fs"
-	"path"
 	"regexp"
-	"sort"
 	"strings"
 
 	"go.starlark.net/lib/json"
+	"go.starlark.net/resolve"
 	"go.starlark.net/starlark"
+	"go.starlark.net/syntax"
+
+	"github.com/craggy-io/foundation-kit/bundle"
+	"github.com/craggy-io/foundation-kit/kind"
 
 	"github.com/craggy-io/classification-services/catalog"
 	"github.com/craggy-io/classification-services/evidence"
@@ -77,16 +87,11 @@ type Test struct {
 	Anomalies []string
 }
 
-// ProgramCache stores compiled programs by source hash.
-type ProgramCache interface {
-	Program(hash string) ([]byte, bool)
-	PutProgram(hash string, data []byte)
-}
+var nameRe = regexp.MustCompile(`^[a-z0-9]([a-z0-9_.-]*[a-z0-9])?$`)
 
-var nameRe = regexp.MustCompile(`^[a-z0-9][a-z0-9_.-]*$`)
-
-// ValidName reports whether name is a valid module name (it becomes a file
-// name, so it is restricted to lower-case letters, digits, '_', '.', '-').
+// ValidName reports whether name is a valid module name: lower-case letters,
+// digits, '_', '.' and '-', starting and ending with a letter or digit, so
+// that it is also a valid bundle contribution ID and file name.
 func ValidName(name string) bool {
 	return len(name) <= 128 && nameRe.MatchString(name) && !strings.Contains(name, "..")
 }
@@ -96,41 +101,84 @@ var predeclared = map[string]bool{
 	"at": true, "base64": true, "hex": true, "json": true,
 }
 
-// Load compiles and runs a module's top level, collecting its declarations.
-// cache may be nil.
-func Load(name string, source []byte, cache ProgramCache) (*Module, error) {
-	return LoadContext(context.Background(), name, source, cache)
+// ModuleKind is the bundle kind of a definition module. It is global: a
+// module is named by its contribution ID alone, so two bundles defining the
+// same module name is a bundle.id_conflict unless a bundle override settles
+// it. Read definitions with bundle.All or bundle.Lookup.
+var ModuleKind = kind.New[*Module]("classify.module", 1, kind.Global())
+
+// CodeInvalid is the diagnostic code for a module that does not parse or
+// whose top level fails.
+const CodeInvalid bundle.Code = "classify.module_invalid"
+
+// Compile is ModuleKind's bundle compiler. The contribution ID is the
+// module name, and its path names the .star file in the bundle. Compiling
+// runs the module's top level, which only declares; it reads no content
+// and has no side effects. Errors become diagnostics positioned in the
+// file.
+func Compile(ctx context.Context, c bundle.Contribution) (bundle.Compiled[*Module], []bundle.Diagnostic) {
+	diag := func(line, col int, msg string) bundle.Diagnostic {
+		return bundle.Diagnostic{Code: CodeInvalid, Path: c.Path, Line: line, Column: col, Message: msg}
+	}
+	if !ValidName(c.Ref.ID) {
+		return bundle.Compiled[*Module]{}, []bundle.Diagnostic{diag(0, 0, fmt.Sprintf("%q is not a valid module name: use lower-case letters, digits, '_', '.' and '-', starting and ending with a letter or digit", c.Ref.ID))}
+	}
+	src, err := fs.ReadFile(c.Files, c.Path)
+	if err != nil {
+		return bundle.Compiled[*Module]{}, []bundle.Diagnostic{diag(0, 0, err.Error())}
+	}
+	mod, err := load(ctx, c.Ref.ID, c.Path, src)
+	if err != nil {
+		return bundle.Compiled[*Module]{}, diagnostics(err, c.Path, diag)
+	}
+	return bundle.Compiled[*Module]{Value: mod}, nil
 }
 
-// LoadContext is Load with cancellation: ctx stops the module's top-level
-// execution (a step limit also applies).
-func LoadContext(ctx context.Context, name string, source []byte, cache ProgramCache) (*Module, error) {
+// diagnostics positions a load error in file: every resolve error, a syntax
+// error, or the innermost frame of a failing top level that is in file.
+func diagnostics(err error, file string, diag func(line, col int, msg string) bundle.Diagnostic) []bundle.Diagnostic {
+	var (
+		list resolve.ErrorList
+		se   syntax.Error
+		ee   *starlark.EvalError
+	)
+	switch {
+	case errors.As(err, &list):
+		out := make([]bundle.Diagnostic, 0, len(list))
+		for _, e := range list {
+			out = append(out, diag(int(e.Pos.Line), int(e.Pos.Col), e.Msg))
+		}
+		return out
+	case errors.As(err, &se):
+		return []bundle.Diagnostic{diag(int(se.Pos.Line), int(se.Pos.Col), se.Msg)}
+	case errors.As(err, &ee):
+		for i := len(ee.CallStack) - 1; i >= 0; i-- {
+			if pos := ee.CallStack[i].Pos; pos.Filename() == file {
+				return []bundle.Diagnostic{diag(int(pos.Line), int(pos.Col), ee.Msg)}
+			}
+		}
+		return []bundle.Diagnostic{diag(0, 0, ee.Msg)}
+	}
+	return []bundle.Diagnostic{diag(0, 0, err.Error())}
+}
+
+// Load parses source as the module name and runs its top level, collecting
+// its declarations. ctx stops the top-level execution (a step limit also
+// applies). Installed and shipped modules are read from bundles through
+// Compile; Load is for a module held in memory.
+func Load(ctx context.Context, name string, source []byte) (*Module, error) {
 	if !ValidName(name) {
 		return nil, fmt.Errorf("definitions: invalid module name %q", name)
 	}
+	return load(ctx, name, name+".star", source)
+}
+
+func load(ctx context.Context, name, file string, source []byte) (*Module, error) {
 	sum := sha256.Sum256(source)
 	mod := &Module{Name: name, Source: bytes.Clone(source), SourceHash: hex.EncodeToString(sum[:])}
-
-	var prog *starlark.Program
-	if cache != nil {
-		if b, ok := cache.Program(mod.SourceHash); ok {
-			if p, err := starlark.CompiledProgram(bytes.NewReader(b)); err == nil {
-				prog = p
-			}
-		}
-	}
-	if prog == nil {
-		_, p, err := starlark.SourceProgram(name+".star", source, func(n string) bool { return predeclared[n] })
-		if err != nil {
-			return nil, fmt.Errorf("definitions: %s: %w", name, err)
-		}
-		prog = p
-		if cache != nil {
-			var buf bytes.Buffer
-			if prog.Write(&buf) == nil {
-				cache.PutProgram(mod.SourceHash, buf.Bytes())
-			}
-		}
+	_, prog, err := starlark.SourceProgram(file, source, func(n string) bool { return predeclared[n] })
+	if err != nil {
+		return nil, fmt.Errorf("definitions: %s: %w", name, err)
 	}
 	mod.Doc = docstring(source)
 
@@ -177,44 +225,6 @@ func docstring(src []byte) string {
 		}
 	}
 	return ""
-}
-
-// LoadFS loads every *.star file in fsys (recursively). Module names are
-// file base names, so they must be unique across directories.
-func LoadFS(fsys fs.FS, cache ProgramCache) ([]*Module, error) {
-	var paths []string
-	err := fs.WalkDir(fsys, ".", func(p string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if !d.IsDir() && strings.HasSuffix(p, ".star") {
-			paths = append(paths, p)
-		}
-		return nil
-	})
-	if err != nil {
-		return nil, err
-	}
-	sort.Strings(paths)
-	seen := map[string]string{}
-	var mods []*Module
-	for _, p := range paths {
-		name := strings.TrimSuffix(path.Base(p), ".star")
-		if prev, dup := seen[name]; dup {
-			return nil, fmt.Errorf("definitions: module %q defined by both %s and %s", name, prev, p)
-		}
-		seen[name] = p
-		src, err := fs.ReadFile(fsys, p)
-		if err != nil {
-			return nil, err
-		}
-		m, err := Load(name, src, cache)
-		if err != nil {
-			return nil, err
-		}
-		mods = append(mods, m)
-	}
-	return mods, nil
 }
 
 type declarer struct{ mod *Module }
