@@ -1,5 +1,5 @@
-github.com/craggy-io/foundation-kit v0.0.0-20261105234034-29ff228ac8d6 h1:+qGukseB+7JzXM8Tqc0bfJ32s9iYsPgArsdbShix31s=
-github.com/craggy-io/foundation-kit v0.0.0-20261105234034-29ff228ac8d6/go.mod h1:3LzurR78LiTu3uSB6g+QvVpc/wOraZgXa7sttq688wQ=
+github.com/craggy-io/foundation-kit v0.0.0-20261105234626-e7c70ea2ccbc h1:8//J24BcVMqvdl7wtE8E+Z/Z6P3K/PJFWBOnXQnEVJ8=
+github.com/craggy-io/foundation-kit v0.0.0-20261105234626-e7c70ea2ccbc/go.mod h1:3LzurR78LiTu3uSB6g+QvVpc/wOraZgXa7sttq688wQ=
 github.com/google/go-cmp v0.7.0 h1:wk8382ETsv4JYUZwIsn6YpYiWiBsYLSJiTsyBybVuN8=
 github.com/google/go-cmp v0.7.0/go.mod h1:pXiqmnSA92OHEEa9HXL2W4E7lf9JzCmGVUdgjX3N/iU=
 go.starlark.net v0.0.0-20261021141710-4f4267fb140d h1:wmJ4xTYwnBup3nwA+3OtmpaCwd90YXVyyCHZQoiD0+0=

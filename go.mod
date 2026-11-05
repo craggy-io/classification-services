@@ -3,7 +3,7 @@ module github.com/craggy-io/classification-services
 go 1.27.0
 
 require (
-	github.com/craggy-io/foundation-kit v0.0.0-20261105234034-29ff228ac8d6
+	github.com/craggy-io/foundation-kit v0.0.0-20261105234626-e7c70ea2ccbc
 	go.starlark.net v0.0.0-20261021141710-4f4267fb140d
 )
 
