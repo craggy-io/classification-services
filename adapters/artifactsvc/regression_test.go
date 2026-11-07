@@ -3,30 +3,25 @@ package artifactsvc_test
 import (
 	"bytes"
 	"context"
-	"errors"
 	"io"
 	"testing"
 
 	"github.com/craggy-io/artifact-services/artifacts"
-	"github.com/craggy-io/artifact-services/observability"
 
 	"github.com/craggy-io/classification-services/adapters/artifactsvc"
 	"github.com/craggy-io/classification-services/classify"
 )
 
-// fakeStore is a Store whose manifest size and pagination can lie.
+// fakeStore is a Store whose manifest size and pagination can lie. It
+// implements only what the classifier reads; the embedded nil Store makes
+// any other method panic, so the fake keeps up with Store without stubs.
 type fakeStore struct {
+	artifacts.Store
 	data   []byte
 	size   int64
 	cursor string // NextCursor returned by every ListFiles call
 }
 
-func (f *fakeStore) Publish(context.Context, artifacts.Manifest) (artifacts.ID, error) {
-	return "", errors.New("unused")
-}
-func (f *fakeStore) Get(context.Context, artifacts.ID) (artifacts.Manifest, error) {
-	return artifacts.Manifest{}, errors.New("unused")
-}
 func (f *fakeStore) OpenFile(context.Context, artifacts.ID, string) (io.ReadCloser, error) {
 	return io.NopCloser(bytes.NewReader(f.data)), nil
 }
@@ -38,12 +33,6 @@ func (f *fakeStore) ListFiles(_ context.Context, _ artifacts.ID, q artifacts.Fil
 		Entries:    []artifacts.Entry{{Path: "a.json", Size: f.size}},
 		NextCursor: f.cursor,
 	}, nil
-}
-func (f *fakeStore) Search(context.Context, artifacts.CatalogQuery) (artifacts.CatalogPage, error) {
-	return artifacts.CatalogPage{}, errors.New("unused")
-}
-func (f *fakeStore) Category(context.Context, artifacts.ID) (observability.Category, error) {
-	return 0, errors.New("unused")
 }
 
 func openEngine(t *testing.T) *classify.Engine {
