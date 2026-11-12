@@ -48,10 +48,12 @@ problem with its file and line. Options:
 | `WithClassifier(Classifier)` | Register a native Go classifier. |
 | `WithLimits(Limits)` | Work limits (below). |
 | `WithObserver(Observer)` | Receive events for every operation. |
+| `WithTaxonomy(*taxonomy.Live)` | Share one type graph with the host's other libraries ([catalog](catalog.md#one-graph-for-a-whole-host)). |
 | `WithAutoRefresh(interval)` | Pick up definitions other processes installed, reloading the bundles at most once per interval. |
 
 `Close` is idempotent; afterwards operations return `ErrClosed`. The workdir
-is kept.
+is kept. With `WithTaxonomy`, `Close` withdraws the engine's types and
+returns an error while another owner's types still descend from them.
 
 ## Sources
 

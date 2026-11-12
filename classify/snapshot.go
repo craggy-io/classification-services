@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/craggy-io/foundation-kit/bundle"
+	"github.com/craggy-io/foundation-kit/taxonomy"
 
 	"github.com/craggy-io/classification-services/catalog"
 	"github.com/craggy-io/classification-services/definitions"
@@ -77,7 +78,7 @@ type snapshot struct {
 
 // newSnapshot builds a snapshot from a definitions catalog: every effective
 // module and CyberChef set in it, plus the native classifiers.
-func newSnapshot(cat *bundle.Catalog, natives []Classifier) (*snapshot, error) {
+func newSnapshot(cat *bundle.Catalog, natives []Classifier, shared *taxonomy.Live) (*snapshot, error) {
 	modules := map[string]*definitions.Module{}
 	for _, d := range bundle.All(cat, definitions.ModuleKind) {
 		modules[d.Value.Name] = d.Value
@@ -86,7 +87,7 @@ func newSnapshot(cat *bundle.Catalog, natives []Classifier) (*snapshot, error) {
 	for _, d := range bundle.All(cat, signatures.CyberChefKind) {
 		sigs = append(sigs, d.Value...)
 	}
-	snap, err := buildSnapshot(modules, natives, sigs)
+	snap, err := buildSnapshot(modules, natives, sigs, shared)
 	if err != nil {
 		return nil, err
 	}
@@ -102,7 +103,10 @@ func intrinsicTypes() []TypeInfo {
 	}
 }
 
-func buildSnapshot(modules map[string]*definitions.Module, natives []Classifier, extra []signatures.Rule) (*snapshot, error) {
+// buildSnapshot validates the types against shared, when the engine has
+// joined a live taxonomy, without publishing them there: Engine.apply does
+// that once the snapshot is known to be good.
+func buildSnapshot(modules map[string]*definitions.Module, natives []Classifier, extra []signatures.Rule, shared *taxonomy.Live) (*snapshot, error) {
 	names := make([]string, 0, len(modules))
 	for n := range modules {
 		names = append(names, n)
@@ -116,7 +120,13 @@ func buildSnapshot(modules map[string]*definitions.Module, natives []Classifier,
 	for _, nc := range natives {
 		infos = append(infos, nc.Spec().Types...)
 	}
-	cat, err := catalog.Build(infos)
+	var cat *catalog.Catalog
+	var err error
+	if shared != nil {
+		cat, err = catalog.BuildIn(shared, TaxonomyOwner, infos)
+	} else {
+		cat, err = catalog.Build(infos)
+	}
 	if err != nil {
 		return nil, err
 	}

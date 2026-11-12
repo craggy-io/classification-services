@@ -12,7 +12,7 @@ AGENTS.md is read. Start with the [walkthrough](docs/walkthrough.md).
 | --- | --- |
 | Classify content, read results, explain, batch, install definitions | [`classify`](docs/classify.md) |
 | Write a Starlark definition (types, signatures, classifiers, tests), or a definitions bundle | [`definitions`](docs/definitions.md) |
-| Type names, parents, `IsA` | [`catalog`](docs/catalog.md) |
+| Type names, parents, `IsA` | foundation-kit's `taxonomy`; file-format facts and the classifier's rules in [`catalog`](docs/catalog.md) |
 | Byte signatures | [`signatures`](docs/signatures.md) |
 | A new structural parser or native recogniser | [`views`, `probes`](docs/recognisers.md) |
 | Store results in artifact-services | [`adapters/artifactsvc`](docs/artifact-services.md) (separate module) |
@@ -26,6 +26,15 @@ imports `probes`. The core module imports only the standard library,
 loading is the shared path). It keeps its own Starlark evaluation and does
 not use script-services. It must never import artifact-services: integration
 belongs in `adapters/`. `arch_test.go` enforces these rules.
+
+## Types
+
+The type graph is foundation-kit's `taxonomy` package, shared with other
+libraries. Never add a second graph, name check or `IsA` here: change
+`taxonomy`, or keep a classifier-only rule in `catalog`. `catalog.TypeInfo`
+carries what only this library knows (MIME type, extensions, priority),
+keyed by type name. A host that owns a `taxonomy.Live` joins the engine to
+it with `classify.WithTaxonomy`.
 
 ## Loading definitions
 

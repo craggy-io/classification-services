@@ -28,6 +28,7 @@ go test ./classify -run xxx -bench .
 | Engine: roots, JSON/text, ZIP/JAR/APK with children, Quick depth, rejection, explain, shared DAG nodes, Deep speculation, sources, anomalies (including name hints and cached-root isolation), limits, nesting, bombs, concurrency, cache equality, cancellation, observer events | `classify/classify_test.go` |
 | Definitions lifecycle: check, define, persist, remove, failing tests, invalid modules, cache reuse across engines, only-new-classifier reruns, in-flight snapshot stability, refresh across engines, preview, ctx primitives, step limits, WithSources and id conflicts, the installed bundle on disk, built-in module tests, batch, directory walk, maintenance | `classify/define_test.go` |
 | Built-in catalogue conventions | `classify/catalogue_test.go` |
+| Sharing a host's live taxonomy: types published and withdrawn, parents from another owner, refresh, check without publishing | `classify/taxonomy_test.go` |
 | CLI commands and exit codes | `cmd/craggy-classify/main_test.go` |
 | Golden results for 34 generated files; two engines sharing one workdir concurrently | `integration/corpus_test.go` |
 | Every file in `samples/` classifies as its README says, and the `widgets` bundle's module passes its tests | `integration/samples_test.go` |

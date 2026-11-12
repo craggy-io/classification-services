@@ -48,7 +48,7 @@ Dependencies run one way: `views` ← `probes` ← `classify`, and
 | --- | --- | --- |
 | `classify` | Engine, sources, result DAG, explain, anomalies, definition lifecycle, batch | [Classify](docs/classify.md) |
 | `definitions` | Starlark module loader, `ctx` API, inline tests | [Definitions](docs/definitions.md) |
-| `catalog` | Type DAG, namespaces, ancestor sets, revisions | [Catalog](docs/catalog.md) |
+| `catalog` | The shared type DAG (foundation-kit `taxonomy`) with file-format facts and revisions | [Catalog](docs/catalog.md) |
 | `signatures` | Compiled byte-signature matcher, CyberChef import | [Signatures](docs/signatures.md) |
 | `probes`, `views` | Native recognisers and the shared parsers they use | [Recognisers](docs/recognisers.md) |
 | `internal/cache`, `internal/paged` | Workdir layout, immutable entries, budgeted page cache | [Cache](docs/cache.md) |

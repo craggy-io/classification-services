@@ -109,7 +109,7 @@ func (e *Engine) check(ctx context.Context, modules map[string][]byte) (cur, can
 		return nil, nil, nil, err
 	}
 	cur = e.snap.Load()
-	if cand, err = newSnapshot(live.Catalog(), e.natives); err != nil {
+	if cand, err = newSnapshot(live.Catalog(), e.natives, e.cfg.taxonomy); err != nil {
 		return nil, nil, nil, err
 	}
 	return cur, cand, e.report(ctx, cur, cand, slices.Sorted(maps.Keys(modules))), nil

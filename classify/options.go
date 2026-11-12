@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/craggy-io/foundation-kit/bundle"
+	"github.com/craggy-io/foundation-kit/taxonomy"
 )
 
 // Limits bounds classification work. Zero fields take the defaults shown.
@@ -60,6 +61,7 @@ type engineConfig struct {
 	limits      Limits
 	observer    Observer
 	refresh     time.Duration
+	taxonomy    *taxonomy.Live
 }
 
 // Option configures Open.
@@ -92,6 +94,21 @@ func WithClassifier(cl Classifier) Option {
 			c.classifiers = append(c.classifiers, cl)
 		}
 	}
+}
+
+// TaxonomyOwner is the owner the engine declares its types under in a live
+// taxonomy given to WithTaxonomy.
+const TaxonomyOwner = "classification-services"
+
+// WithTaxonomy joins the engine to a host's live taxonomy, so its types and
+// the types other owners declare form one graph. Definitions may then give a
+// type a parent another owner declared, and Types, Type and IsA cover the
+// whole graph. The engine declares its types under TaxonomyOwner on Open and
+// on every Define, Remove and Refresh, and withdraws them on Close, so use
+// one engine per live taxonomy. Call Refresh after another owner changes the
+// taxonomy. Without this option the engine keeps a taxonomy of its own.
+func WithTaxonomy(live *taxonomy.Live) Option {
+	return func(c *engineConfig) { c.taxonomy = live }
 }
 
 // WithLimits sets the work limits.

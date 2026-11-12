@@ -157,12 +157,22 @@ func (e *Engine) installedDir() string {
 // snapshot changed. Callers hold e.mu (or are Open).
 func (e *Engine) apply() (bool, error) {
 	cat := e.live.Catalog()
-	if cur := e.snap.Load(); cur != nil && cur.bundles == cat {
+	shared := e.cfg.taxonomy
+	if cur := e.snap.Load(); cur != nil && cur.bundles == cat &&
+		(shared == nil || shared.Taxonomy().Revision() == cur.catalog.Taxonomy().Revision()) {
 		return false, nil
 	}
-	snap, err := newSnapshot(cat, e.natives)
+	snap, err := newSnapshot(cat, e.natives, shared)
 	if err != nil {
 		return false, err
+	}
+	if shared != nil {
+		// Publish the types before the snapshot that relies on them. If
+		// another owner changed the taxonomy since the snapshot was
+		// built, the revisions differ and the next apply rebuilds.
+		if _, err := shared.Declare(TaxonomyOwner, snap.catalog.Own()); err != nil {
+			return false, fmt.Errorf("classify: declaring types: %w", err)
+		}
 	}
 	e.install(snap)
 	return true, nil
@@ -175,9 +185,17 @@ func (e *Engine) install(s *snapshot) {
 	e.lruMu.Unlock()
 }
 
-// Close releases the engine. It is idempotent. The workdir is kept.
+// Close releases the engine. It is idempotent. The workdir is kept. An
+// engine that joined a live taxonomy withdraws its types, which fails while
+// another owner's types still descend from them.
 func (e *Engine) Close() error {
 	e.closed.Store(true)
+	if e.cfg.taxonomy == nil {
+		return nil
+	}
+	if _, err := e.cfg.taxonomy.Withdraw(TaxonomyOwner); err != nil {
+		return fmt.Errorf("classify: withdrawing types: %w", err)
+	}
 	return nil
 }
 

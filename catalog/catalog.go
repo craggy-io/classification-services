@@ -1,11 +1,16 @@
-// Package catalog is the type DAG: every type declares its parents, ancestor
-// sets are precomputed, and IsA is a map lookup. A Catalog is immutable once
-// built and safe for concurrent use.
+// Package catalog is the classifier's view of the type graph: the shared
+// taxonomy from foundation-kit, plus the file-format facts only this library
+// knows about a type (MIME type, extensions, priority). A Catalog is
+// immutable once built and safe for concurrent use.
 //
-// Type names are "namespace.name" (for example "archive.zip",
-// "executable.elf"), plus the two roots "bytes" and "text". When a type's
-// namespace ("archive") is itself a declared type, the type must descend from
-// it, so namespace membership and IsA never disagree.
+// Names, parents, IsA and the graph's rules are foundation-kit's taxonomy
+// package. This package adds the rules that are specific to file contents:
+// "bytes" is the root every type here descends from, and a single-label name
+// other than "bytes" and "text" is an abstract namespace.
+//
+// Build makes a catalog of this library's types alone. BuildIn builds one
+// over a host's live taxonomy, so the graph also holds the types other owners
+// declared and these types may descend from them.
 package catalog
 
 import (
@@ -15,6 +20,8 @@ import (
 	"slices"
 	"sort"
 	"strings"
+
+	"github.com/craggy-io/foundation-kit/taxonomy"
 )
 
 // Root types asserted by the engine itself.
@@ -92,43 +99,62 @@ func (t TypeInfo) fingerprint() string {
 	return b.String()
 }
 
+// node is t as the shared taxonomy sees it: the name and relationships,
+// without the file-format facts.
+func (t TypeInfo) node() taxonomy.Type {
+	return taxonomy.Type{Name: t.Name, Parents: slices.Clone(t.Parents), Description: t.Description, Abstract: t.Abstract}
+}
+
 // Namespace returns the part of name before the first dot, or "" for a
 // root-level name.
-func Namespace(name string) string {
-	if i := strings.IndexByte(name, '.'); i > 0 {
-		return name[:i]
-	}
-	return ""
-}
+func Namespace(name string) string { return taxonomy.Namespace(name) }
 
-// Catalog is a validated type DAG.
+// Catalog is a validated type graph with each type's file-format facts.
 type Catalog struct {
-	types     map[string]TypeInfo
-	ancestors map[string]map[string]bool // excludes self
-	depth     map[string]int             // longest path to a root
-	byExt     map[string][]string
-	revision  string
+	tax      *taxonomy.Taxonomy
+	own      []TypeInfo          // the types this catalog was built from
+	types    map[string]TypeInfo // every type in tax
+	byExt    map[string][]string
+	revision string
 }
 
-// Build validates infos into a catalog. Identical redeclarations are
-// tolerated (two modules may share a type); conflicting ones are errors.
+// privateOwner owns the types of a catalog that shares no live taxonomy.
+const privateOwner = "catalog"
+
+// Build validates infos into a catalog that holds only those types.
+// Identical redeclarations are tolerated (two modules may share a type);
+// conflicting ones are errors.
 func Build(infos []TypeInfo) (*Catalog, error) {
-	c := &Catalog{
-		types:     map[string]TypeInfo{},
-		ancestors: map[string]map[string]bool{},
-		depth:     map[string]int{},
-		byExt:     map[string][]string{},
-	}
+	return build(infos, func(own []taxonomy.Type) (*taxonomy.Taxonomy, error) {
+		return taxonomy.New(taxonomy.Set{Owner: privateOwner, Types: own})
+	})
+}
+
+// BuildIn validates infos as owner's types in a host's live taxonomy. The
+// catalog's graph is what live would hold once owner declared them, so it
+// includes other owners' types, and infos may descend from those. Nothing is
+// published: call live.Declare(owner, c.Own()) to do that.
+func BuildIn(live *taxonomy.Live, owner string, infos []TypeInfo) (*Catalog, error) {
+	return build(infos, func(own []taxonomy.Type) (*taxonomy.Taxonomy, error) {
+		return live.Preview(owner, own)
+	})
+}
+
+func build(infos []TypeInfo, graph func([]taxonomy.Type) (*taxonomy.Taxonomy, error)) (*Catalog, error) {
+	c := &Catalog{types: map[string]TypeInfo{}, byExt: map[string][]string{}}
 	for _, ti := range infos {
 		ti = ti.Normalize()
 		if ti.Name == "" {
 			return nil, fmt.Errorf("catalog: type with empty name")
 		}
-		if !validName(ti.Name) {
+		if !taxonomy.ValidName(ti.Name) {
 			return nil, fmt.Errorf("catalog: invalid type name %q (want lower-case namespace.name)", ti.Name)
 		}
 		if !strings.Contains(ti.Name, ".") && !ti.Abstract && ti.Name != Bytes && ti.Name != Text {
 			return nil, fmt.Errorf("catalog: concrete type %q must be namespace.name (single labels are abstract namespaces)", ti.Name)
+		}
+		if ti.Name != Bytes && len(ti.Parents) == 0 {
+			return nil, fmt.Errorf("catalog: type %q has no parents (every type except %q descends from it)", ti.Name, Bytes)
 		}
 		if prev, ok := c.types[ti.Name]; ok {
 			if prev.fingerprint() != ti.fingerprint() {
@@ -137,93 +163,41 @@ func Build(infos []TypeInfo) (*Catalog, error) {
 			continue
 		}
 		c.types[ti.Name] = ti
+		c.own = append(c.own, ti)
 	}
-	for name, ti := range c.types {
-		if name != Bytes && len(ti.Parents) == 0 {
-			return nil, fmt.Errorf("catalog: type %q has no parents (every type except %q descends from it)", name, Bytes)
-		}
-		for _, p := range ti.Parents {
-			if _, ok := c.types[p]; !ok {
-				return nil, fmt.Errorf("catalog: type %q has unknown parent %q", name, p)
-			}
-		}
+	tax, err := graph(c.Own())
+	if err != nil {
+		return nil, fmt.Errorf("catalog: %w", err)
 	}
-	const (
-		white = iota
-		grey
-		black
-	)
-	colour := map[string]int{}
-	var visit func(string) error
-	visit = func(name string) error {
-		switch colour[name] {
-		case grey:
-			return fmt.Errorf("catalog: cycle in type DAG at %q", name)
-		case black:
-			return nil
-		}
-		colour[name] = grey
-		anc := map[string]bool{}
-		depth := 0
-		for _, p := range c.types[name].Parents {
-			if err := visit(p); err != nil {
-				return err
-			}
-			anc[p] = true
-			for a := range c.ancestors[p] {
-				anc[a] = true
-			}
-			depth = max(depth, c.depth[p]+1)
-		}
-		c.ancestors[name] = anc
-		c.depth[name] = depth
-		colour[name] = black
-		return nil
-	}
-	names := c.sortedNames()
-	for _, name := range names {
-		if err := visit(name); err != nil {
-			return nil, err
-		}
-	}
-	for _, name := range names {
-		ns := Namespace(name)
-		if _, declared := c.types[ns]; declared && !c.ancestors[name][ns] {
-			return nil, fmt.Errorf("catalog: type %q is in namespace %q but does not descend from it", name, ns)
-		}
-		for _, e := range c.types[name].Ext {
-			c.byExt[e] = append(c.byExt[e], name)
-		}
-	}
+	c.tax = tax
 	h := sha256.New()
-	for _, name := range names {
-		fmt.Fprintln(h, c.types[name].fingerprint())
+	for _, t := range tax.Types() {
+		ti, ok := c.types[t.Name]
+		if !ok {
+			// Another owner's type: it has no file-format facts.
+			ti = TypeInfo{Name: t.Name, Parents: t.Parents, Description: t.Description, Abstract: t.Abstract}
+			c.types[t.Name] = ti
+		}
+		for _, e := range ti.Ext {
+			c.byExt[e] = append(c.byExt[e], t.Name)
+		}
+		fmt.Fprintln(h, ti.fingerprint())
 	}
 	c.revision = hex.EncodeToString(h.Sum(nil))[:16]
 	return c, nil
 }
 
-func validName(s string) bool {
-	if s == "" || s[0] == '.' || s[len(s)-1] == '.' || strings.Contains(s, "..") {
-		return false
-	}
-	for _, r := range s {
-		switch {
-		case r >= 'a' && r <= 'z', r >= '0' && r <= '9', r == '.', r == '-', r == '_', r == '+':
-		default:
-			return false
-		}
-	}
-	return true
-}
+// Taxonomy returns the shared graph this catalog reads.
+func (c *Catalog) Taxonomy() *taxonomy.Taxonomy { return c.tax }
 
-func (c *Catalog) sortedNames() []string {
-	names := make([]string, 0, len(c.types))
-	for n := range c.types {
-		names = append(names, n)
+// Own returns the types this catalog was built from, as the taxonomy sees
+// them: what its owner declares in a live taxonomy.
+func (c *Catalog) Own() []taxonomy.Type {
+	out := make([]taxonomy.Type, len(c.own))
+	for i, ti := range c.own {
+		out[i] = ti.node()
 	}
-	sort.Strings(names)
-	return names
+	return out
 }
 
 // Revision identifies the whole catalogue's content.
@@ -241,10 +215,7 @@ func (c *Catalog) TypeRevision(name string) string {
 }
 
 // Has reports whether name is a declared type.
-func (c *Catalog) Has(name string) bool {
-	_, ok := c.types[name]
-	return ok
-}
+func (c *Catalog) Has(name string) bool { return c.tax.Has(name) }
 
 // Get returns a copy of the type's definition.
 func (c *Catalog) Get(name string) (TypeInfo, bool) {
@@ -254,38 +225,17 @@ func (c *Catalog) Get(name string) (TypeInfo, bool) {
 
 // IsA reports whether child is parent or one of its descendants. An
 // undeclared type is not anything, not even itself.
-func (c *Catalog) IsA(child, parent string) bool {
-	if child == parent {
-		return c.Has(child)
-	}
-	return c.ancestors[child][parent]
-}
+func (c *Catalog) IsA(child, parent string) bool { return c.tax.IsA(child, parent) }
 
 // Ancestors returns name's ancestors (excluding name), sorted.
-func (c *Catalog) Ancestors(name string) []string {
-	out := make([]string, 0, len(c.ancestors[name]))
-	for a := range c.ancestors[name] {
-		out = append(out, a)
-	}
-	sort.Strings(out)
-	return out
-}
+func (c *Catalog) Ancestors(name string) []string { return c.tax.Ancestors(name) }
 
-// Depth is the length of the longest parent path from name to the root.
+// Depth is the length of the longest parent path from name to a root.
 // Deeper types are more specific.
-func (c *Catalog) Depth(name string) int { return c.depth[name] }
+func (c *Catalog) Depth(name string) int { return c.tax.Depth(name) }
 
 // Closure returns the given types plus all their ancestors.
-func (c *Catalog) Closure(types map[string]bool) map[string]bool {
-	out := make(map[string]bool, len(types)*2)
-	for t := range types {
-		out[t] = true
-		for a := range c.ancestors[t] {
-			out[a] = true
-		}
-	}
-	return out
-}
+func (c *Catalog) Closure(types map[string]bool) map[string]bool { return c.tax.Closure(types) }
 
 // ByExtension returns the types declaring ext (without dot), sorted.
 func (c *Catalog) ByExtension(ext string) []string {
@@ -297,13 +247,13 @@ func (c *Catalog) ByExtension(ext string) []string {
 
 // Types returns every type, sorted by name.
 func (c *Catalog) Types() []TypeInfo {
-	names := c.sortedNames()
-	out := make([]TypeInfo, len(names))
-	for i, n := range names {
-		out[i] = c.types[n].clone()
+	nodes := c.tax.Types()
+	out := make([]TypeInfo, len(nodes))
+	for i, t := range nodes {
+		out[i] = c.types[t.Name].clone()
 	}
 	return out
 }
 
 // Len returns the number of types.
-func (c *Catalog) Len() int { return len(c.types) }
+func (c *Catalog) Len() int { return c.tax.Len() }
