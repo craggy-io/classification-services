@@ -61,18 +61,23 @@ type("acme.image", parents = ["acme", "container.layered", "archive.tar"])
 		t.Fatal("the host withdrew a type a definition descends from")
 	}
 
-	// Another owner's change reaches the engine on Refresh.
+	// Another owner's change reaches the engine by itself, and the engine's
+	// own declaration that follows doesn't make it rebuild again.
+	before := e.Revision()
 	if _, err := live.Declare("java", []taxonomy.Type{{Name: "container.jvm", Parents: []string{"container", "archive.jar"}}}); err != nil {
 		t.Fatal(err)
 	}
-	if e.IsA("container.jvm", "archive.zip") {
-		t.Fatal("the engine changed without a Refresh")
-	}
-	if changed, err := e.Refresh(ctx); err != nil || !changed {
-		t.Fatalf("Refresh = %v, %v", changed, err)
-	}
 	if !e.IsA("container.jvm", "archive.zip") {
-		t.Fatal("Refresh didn't pick up the new type")
+		t.Fatal("the engine didn't follow another owner's new type")
+	}
+	if e.Revision() == before {
+		t.Fatal("the engine's revision ignores the taxonomy change")
+	}
+	if changed, err := e.Refresh(ctx); err != nil || changed {
+		t.Fatalf("Refresh after following = %v, %v", changed, err)
+	}
+	if r, err := e.Classify(ctx, classify.Bytes([]byte("{}"))); err != nil || !r.Is("data.json") {
+		t.Fatalf("Classify after following: %v", err)
 	}
 
 	// Closing is refused while "java" builds on the engine's types, and
@@ -90,6 +95,8 @@ type("acme.image", parents = ["acme", "container.layered", "archive.tar"])
 	if err := e2.Close(); err != nil {
 		t.Fatal(err)
 	}
+	// A closed engine doesn't follow, so it doesn't declare its types again.
+	_ = e2.Types()
 	if got := live.Owners(); !slices.Equal(got, []string{"host"}) {
 		t.Fatalf("owners after Close = %v", got)
 	}

@@ -208,26 +208,56 @@ func (e *Engine) current() (*snapshot, error) {
 			return nil, err
 		}
 	}
+	if err := e.follow(); err != nil {
+		return nil, err
+	}
 	return e.snap.Load(), nil
+}
+
+// follow rebuilds the snapshot when another owner has changed the live
+// taxonomy the engine joined, so the engine never needs telling. The check
+// is one revision comparison, and the engine's own declarations don't
+// trigger it because the snapshot they came from already matches. Callers
+// must not hold e.mu.
+func (e *Engine) follow() error {
+	shared := e.cfg.taxonomy
+	if shared == nil || e.closed.Load() || shared.Taxonomy().Revision() == e.snap.Load().catalog.Taxonomy().Revision() {
+		return nil
+	}
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if e.closed.Load() {
+		return nil
+	}
+	_, err := e.apply()
+	return err
+}
+
+// view is the snapshot for a read that can't report an error: it follows
+// the live taxonomy when it can, and otherwise answers from the last good
+// snapshot.
+func (e *Engine) view() *snapshot {
+	_ = e.follow()
+	return e.snap.Load()
 }
 
 // Workdir returns the absolute working folder.
 func (e *Engine) Workdir() string { return e.store.Root() }
 
 // Revision identifies the active definitions snapshot.
-func (e *Engine) Revision() string { return e.snap.Load().revision }
+func (e *Engine) Revision() string { return e.view().revision }
 
 // Types returns the catalogue, sorted by name.
-func (e *Engine) Types() []TypeInfo { return e.snap.Load().catalog.Types() }
+func (e *Engine) Types() []TypeInfo { return e.view().catalog.Types() }
 
 // Type returns one type's definition.
-func (e *Engine) Type(name string) (TypeInfo, bool) { return e.snap.Load().catalog.Get(name) }
+func (e *Engine) Type(name string) (TypeInfo, bool) { return e.view().catalog.Get(name) }
 
 // IsA reports whether child is parent or one of its descendants.
-func (e *Engine) IsA(child, parent string) bool { return e.snap.Load().catalog.IsA(child, parent) }
+func (e *Engine) IsA(child, parent string) bool { return e.view().catalog.IsA(child, parent) }
 
 // Catalog returns the active catalogue.
-func (e *Engine) Catalog() *catalog.Catalog { return e.snap.Load().catalog }
+func (e *Engine) Catalog() *catalog.Catalog { return e.view().catalog }
 
 // Definitions lists installed module names, sorted.
 func (e *Engine) Definitions() []string {

@@ -105,8 +105,9 @@ const TaxonomyOwner = "classification-services"
 // type a parent another owner declared, and Types, Type and IsA cover the
 // whole graph. The engine declares its types under TaxonomyOwner on Open and
 // on every Define, Remove and Refresh, and withdraws them on Close, so use
-// one engine per live taxonomy. Call Refresh after another owner changes the
-// taxonomy. Without this option the engine keeps a taxonomy of its own.
+// one engine per live taxonomy. When another owner changes the taxonomy, the
+// engine follows on its next call. Without this option the engine keeps a
+// taxonomy of its own.
 func WithTaxonomy(live *taxonomy.Live) Option {
 	return func(c *engineConfig) { c.taxonomy = live }
 }

@@ -30,7 +30,7 @@ the engine then shares one graph with every other owner:
   content.
 - `Types`, `Type` and `IsA` cover the whole graph. Another owner's type has
   no MIME type or extensions.
-- Call `Refresh` after another owner changes the taxonomy.
+- When another owner changes the taxonomy, the engine follows by itself on its next call (`Classify`, `Types`, `IsA` and the rest). The check is one revision comparison, so it costs nothing while the taxonomy is unchanged. The rebuild clears the in-memory result cache.
 - `Check` and `Preview` validate against `live` without publishing to it.
 - Use one engine per live taxonomy, because the owner name is fixed.
 
